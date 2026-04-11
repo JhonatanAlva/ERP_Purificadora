@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+
+  frontend:
+    build: ./frontend
+    container_name: purificadora_frontend
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    restart: always
+
+  backend:
+    build: ./backend
+    container_name: purificadora_backend
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+    env_file:
+      - ./backend/.env
+    restart: always  
+
+  postgres:
+    image: postgres:15
+    container_name: purificadora_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: puri_user
+      POSTGRES_PASSWORD: puri_pass
+      POSTGRES_DB: purificadora_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - purificadora_postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: purificadora_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@puri.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5051:80"
+    depends_on:
+      - postgres
+    volumes:
+      - purificadora_pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  purificadora_postgres_data:
+  purificadora_pgadmin_data:
