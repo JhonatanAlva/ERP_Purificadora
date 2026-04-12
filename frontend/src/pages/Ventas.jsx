@@ -14,15 +14,15 @@ const Toast = ({ msg, type }) => (
 );
 
 const ESTADO_COLORS = {
-  pagada:    "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  pagada: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   pendiente: "bg-amber-50 text-amber-700 border border-amber-200",
   cancelada: "bg-red-50 text-red-600 border border-red-200",
 };
 
 const TIPO_VENTA_COLORS = {
   mostrador: "bg-blue-100 text-blue-700",
-  ruta:      "bg-orange-100 text-orange-700",
-  pedido:    "bg-purple-100 text-purple-700",
+  ruta: "bg-orange-100 text-orange-700",
+  pedido: "bg-purple-100 text-purple-700",
 };
 
 const EMPTY_FORM = {
@@ -46,6 +46,8 @@ const Ventas = () => {
 
   const [modal, setModal] = useState(false);
   const [detailModal, setDetailModal] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [confirmCancelar, setConfirmCancelar] = useState(null);
 
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
@@ -92,9 +94,23 @@ const Ventas = () => {
     .filter(v => v.estado !== "cancelada")
     .reduce((s, v) => s + Number(v.total || 0), 0);
 
+  // ================= CARRITO
   const addItem = (prod) => {
     const existe = form.items.find(i => i.producto_id === prod.id);
+    const stockDisponible = prod.stock_actual;
+
+    // No agregar si no hay stock
+    if (stockDisponible <= 0) {
+      showToast(`Sin stock disponible para ${prod.nombre}`, "error");
+      return;
+    }
+
     if (existe) {
+      // No superar el stock disponible
+      if (existe.cantidad >= stockDisponible) {
+        showToast(`Stock máximo alcanzado para ${prod.nombre} (${stockDisponible})`, "error");
+        return;
+      }
       setForm({
         ...form,
         items: form.items.map(i =>
@@ -135,6 +151,7 @@ const Ventas = () => {
   const subtotal = form.items.reduce((s, i) => s + i.subtotal, 0);
   const total = Math.max(0, subtotal - (Number(form.descuento) || 0));
 
+  // ================= GUARDAR VENTA
   const guardarVenta = async () => {
     if (form.items.length === 0) { showToast("Agrega al menos un producto", "error"); return; }
     if (form.metodo_pago === "credito" && !form.cliente_id) {
@@ -157,6 +174,37 @@ const Ventas = () => {
       showToast(err.response?.data?.error || "Error al guardar", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ================= ABRIR DETALLE
+  const openDetail = async (v) => {
+    setDetailModal(v);
+    setDetailData(null);
+    try {
+      const res = await api.get(`/ventas/${v.id}`);
+      setDetailData(res.data);
+    } catch {
+      // muestra datos básicos igual
+    }
+  };
+
+  const closeDetail = () => {
+    setDetailModal(null);
+    setDetailData(null);
+  };
+
+  // ================= CANCELAR VENTA
+  const handleCancelar = async (id) => {
+    try {
+      await api.patch(`/ventas/${id}/cancelar`);
+      showToast("Venta cancelada, stock restaurado");
+      closeDetail();
+      setConfirmCancelar(null);
+      loadData();
+    } catch (err) {
+      showToast(err.response?.data?.error || "Error al cancelar", "error");
+      setConfirmCancelar(null);
     }
   };
 
@@ -205,7 +253,7 @@ const Ventas = () => {
             className="border border-gray-200 bg-gray-50 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-            {[["todos","Todos"],["pagada","Pagadas"],["pendiente","Pendientes"],["cancelada","Canceladas"]].map(([val, label]) => (
+            {[["todos", "Todos"], ["pagada", "Pagadas"], ["pendiente", "Pendientes"], ["cancelada", "Canceladas"]].map(([val, label]) => (
               <button key={val} onClick={() => setFiltroEstado(val)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition
                   ${filtroEstado === val ? "bg-white shadow-sm text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
@@ -247,7 +295,7 @@ const Ventas = () => {
               </thead>
               <tbody>
                 {filtered.map(v => (
-                  <tr key={v.id} className="border-t border-gray-50 hover:bg-gray-50/70 transition">
+                  <tr key={v.id} className={`border-t border-gray-50 hover:bg-gray-50/70 transition ${v.estado === "cancelada" ? "opacity-60" : ""}`}>
                     <td className="px-5 py-3 font-mono text-xs text-gray-500">{v.folio}</td>
                     <td className="px-5 py-3 font-medium text-gray-800">{v.cliente_nombre || "Público general"}</td>
                     <td className="px-5 py-3 text-gray-500">{v.fecha?.split("T")[0]}</td>
@@ -273,7 +321,7 @@ const Ventas = () => {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-center">
-                      <button onClick={() => setDetailModal(v)}
+                      <button onClick={() => openDetail(v)}
                         className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500 transition">
                         <Eye size={15} />
                       </button>
@@ -289,7 +337,6 @@ const Ventas = () => {
         {modal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col">
-
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                 <h3 className="font-bold text-gray-800 text-lg">Nueva Venta</h3>
                 <button onClick={() => setModal(false)}
@@ -299,8 +346,6 @@ const Ventas = () => {
               </div>
 
               <div className="p-6 space-y-5 overflow-y-auto flex-1">
-
-                {/* Fecha + Tipo + Cliente + Pago */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fecha</label>
@@ -340,16 +385,22 @@ const Ventas = () => {
                   </div>
                 </div>
 
-                {/* Productos */}
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Agregar Productos</label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 max-h-44 overflow-y-auto border border-gray-100 rounded-xl p-2 bg-gray-50/50">
                     {productos.map(p => (
                       <button key={p.id} onClick={() => addItem(p)}
-                        className="text-left p-2.5 rounded-xl hover:bg-white hover:shadow-sm border border-transparent hover:border-blue-100 transition-all">
+                        disabled={p.stock_actual <= 0}
+                        className={`text-left p-2.5 rounded-xl border transition-all
+    ${p.stock_actual <= 0
+                            ? "opacity-40 cursor-not-allowed border-gray-100 bg-gray-50"
+                            : "hover:bg-white hover:shadow-sm border-transparent hover:border-blue-100"
+                          }`}>
                         <p className="text-xs font-semibold text-gray-700 truncate">{p.nombre}</p>
                         <p className="text-xs text-emerald-600 font-bold mt-0.5">Q {Number(p.precio_venta).toFixed(2)}</p>
-                        <p className="text-xs text-gray-400">Stock: {p.stock_actual}</p>
+                        <p className={`text-xs mt-0.5 ${p.stock_actual <= 0 ? "text-red-400 font-medium" : "text-gray-400"}`}>
+                          {p.stock_actual <= 0 ? "Sin stock" : `Stock: ${p.stock_actual}`}
+                        </p>
                       </button>
                     ))}
                     {productos.length === 0 && (
@@ -358,7 +409,6 @@ const Ventas = () => {
                   </div>
                 </div>
 
-                {/* Carrito */}
                 {form.items.length > 0 && (
                   <div className="border border-gray-100 rounded-xl overflow-hidden">
                     <table className="w-full text-sm">
@@ -382,8 +432,11 @@ const Ventas = () => {
                                   <ArrowDown size={10} />
                                 </button>
                                 <span className="w-8 text-center font-semibold text-sm">{item.cantidad}</span>
-                                <button onClick={() => updateCantidad(item.producto_id, item.cantidad + 1)}
-                                  className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition">
+                                <button
+                                  onClick={() => updateCantidad(item.producto_id, item.cantidad + 1)}
+                                  //busca el producto para saber su stock
+                                  disabled={item.cantidad >= (productos.find(p => p.id === item.producto_id)?.stock_actual ?? 0)}
+                                  className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed">
                                   <ArrowUp size={10} />
                                 </button>
                               </div>
@@ -403,7 +456,6 @@ const Ventas = () => {
                   </div>
                 )}
 
-                {/* Totales */}
                 <div className="bg-gray-50 rounded-xl p-4 space-y-2 border border-gray-100">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Subtotal</span>
@@ -421,7 +473,6 @@ const Ventas = () => {
                   </div>
                 </div>
 
-                {/* Garrafones + Estado */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -433,8 +484,7 @@ const Ventas = () => {
                         className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition font-bold text-gray-600">
                         −
                       </button>
-                      <input
-                        type="number" min="0"
+                      <input type="number" min="0"
                         value={form.garrafones_recibidos}
                         onChange={e => setForm({ ...form, garrafones_recibidos: parseInt(e.target.value) || 0 })}
                         className="flex-1 text-center border border-gray-200 bg-gray-50 rounded-xl py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
@@ -461,7 +511,6 @@ const Ventas = () => {
                   </div>
                 </div>
 
-                {/* Notas */}
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notas</label>
                   <input value={form.notas}
@@ -491,17 +540,19 @@ const Ventas = () => {
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                 <h3 className="font-bold text-gray-800">Detalle de Venta</h3>
-                <button onClick={() => setDetailModal(null)}
+                <button onClick={closeDetail}
                   className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
                   <X size={18} />
                 </button>
               </div>
+
               <div className="p-6 space-y-4">
+                {/* Info básica */}
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   {[
                     ["Folio", <span className="font-mono font-medium">{detailModal.folio}</span>],
                     ["Fecha", detailModal.fecha?.split("T")[0]],
-                    ["Cliente", detailModal.cliente_nombre || "Público general"],
+                    ["Cliente", detailModal.cliente_nombre || "Público General"],
                     ["Tipo", detailModal.tipo_venta],
                     ["Pago", detailModal.metodo_pago],
                     ["Estado", <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_COLORS[detailModal.estado]}`}>{detailModal.estado}</span>],
@@ -513,7 +564,31 @@ const Ventas = () => {
                   ))}
                 </div>
 
-                {/* Garrafones en detalle */}
+                {/* Productos */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Productos</p>
+                  {!detailData ? (
+                    <div className="text-center py-4 text-gray-400 text-xs">Cargando...</div>
+                  ) : detailData.items?.length === 0 ? (
+                    <div className="text-center py-4 text-gray-400 text-xs">Sin productos</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {detailData.items.map((item, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm bg-gray-50 px-3 py-2.5 rounded-xl">
+                          <div>
+                            <span className="font-medium text-gray-700">{item.nombre}</span>
+                            <span className="text-gray-400 text-xs ml-2">x{item.cantidad}</span>
+                          </div>
+                          <span className="font-semibold text-gray-800">
+                            Q {Number(item.subtotal).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Garrafones */}
                 {Number(detailModal.garrafones_recibidos) > 0 && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-center gap-3">
                     <span className="text-2xl">🫙</span>
@@ -524,6 +599,7 @@ const Ventas = () => {
                   </div>
                 )}
 
+                {/* Totales */}
                 <div className="border-t border-gray-100 pt-4 space-y-1.5 text-sm">
                   <div className="flex justify-between text-gray-500">
                     <span>Subtotal</span><span>{fmt(detailModal.subtotal)}</span>
@@ -533,7 +609,7 @@ const Ventas = () => {
                       <span>Descuento</span><span>- {fmt(detailModal.descuento)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-100">
+                  <div className="flex justify-between font-bold text-base pt-1.5 border-t border-gray-100">
                     <span>Total</span>
                     <span className="text-emerald-600">{fmt(detailModal.total)}</span>
                   </div>
@@ -544,6 +620,50 @@ const Ventas = () => {
                     {detailModal.notas}
                   </p>
                 )}
+
+                {/* Botón cancelar venta */}
+                {detailModal.estado !== "cancelada" && (
+                  <button
+                    onClick={() => setConfirmCancelar(detailModal.id)}
+                    className="w-full border border-red-200 text-red-500 rounded-xl py-2.5 text-sm font-medium hover:bg-red-50 transition mt-2">
+                    Cancelar venta
+                  </button>
+                )}
+
+                {/* Badge venta cancelada */}
+                {detailModal.estado === "cancelada" && (
+                  <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-center">
+                    <p className="text-red-500 text-sm font-medium">Esta venta fue cancelada</p>
+                    <p className="text-red-400 text-xs mt-0.5">El stock fue restaurado al momento de la cancelación</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL CONFIRMAR CANCELACIÓN */}
+        {confirmCancelar && (
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+              <div className="p-6 text-center space-y-3">
+                <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+                  <ShoppingCart size={24} className="text-red-500" />
+                </div>
+                <h3 className="font-bold text-lg text-gray-800">¿Cancelar esta venta?</h3>
+                <p className="text-sm text-gray-500">
+                  Los productos se regresarán al inventario automáticamente. Esta acción no se puede deshacer.
+                </p>
+              </div>
+              <div className="flex gap-3 px-6 pb-6">
+                <button onClick={() => setConfirmCancelar(null)}
+                  className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50 transition">
+                  No, mantener
+                </button>
+                <button onClick={() => handleCancelar(confirmCancelar)}
+                  className="flex-1 bg-red-500 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-red-600 transition">
+                  Sí, cancelar
+                </button>
               </div>
             </div>
           </div>

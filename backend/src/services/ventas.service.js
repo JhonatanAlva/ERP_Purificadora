@@ -195,3 +195,70 @@ export const crearVenta = async (data) => {
     client.release();
   }
 };
+
+// =========================
+// CANCELAR VENTA
+// =========================
+export const cancelarVenta = async (id) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Verificar que existe y no está ya cancelada
+    const ventaRes = await client.query(
+      "SELECT * FROM ventas WHERE id = $1",
+      [id]
+    );
+
+    if (ventaRes.rows.length === 0) throw new Error("Venta no encontrada");
+    const venta = ventaRes.rows[0];
+    if (venta.estado === "cancelada") throw new Error("La venta ya está cancelada");
+
+    // Obtener items de la venta
+    const itemsRes = await client.query(
+      "SELECT * FROM venta_detalle WHERE venta_id = $1",
+      [id]
+    );
+
+    // Regresar stock por cada producto
+    for (const item of itemsRes.rows) {
+      const prodRes = await client.query(
+        "SELECT * FROM productos WHERE id = $1",
+        [item.producto_id]
+      );
+
+      if (prodRes.rows.length === 0) continue;
+      const producto = prodRes.rows[0];
+      const nuevoStock = producto.stock_actual + item.cantidad;
+
+      await client.query(
+        "UPDATE productos SET stock_actual = $1 WHERE id = $2",
+        [nuevoStock, item.producto_id]
+      );
+
+      // Registrar movimiento de entrada por cancelación
+      await client.query(
+        `INSERT INTO movimientos_inventario
+        (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
+        VALUES ($1,'entrada',$2,$3,$4,'cancelacion_venta',NOW())`,
+        [item.producto_id, item.cantidad, producto.stock_actual, nuevoStock]
+      );
+    }
+
+    // Marcar venta como cancelada
+    await client.query(
+      "UPDATE ventas SET estado = 'cancelada' WHERE id = $1",
+      [id]
+    );
+
+    await client.query("COMMIT");
+    return { ok: true };
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+};

@@ -26,3 +26,12 @@ export const crearVenta = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+export const cancelarVenta = async (req, res) => {
+  try {
+    await ventasService.cancelarVenta(req.params.id);
+    res.json({ message: "Venta cancelada" });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
