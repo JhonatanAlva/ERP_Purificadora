@@ -1,6 +1,6 @@
 import * as clienteService from "../services/clientes.service.js";
 
-// 🔹 Obtener clientes
+// Obtener clientes
 export const getClientes = async (req, res) => {
   try {
     const { page = 1, limit = 10, estado = "todos" } = req.query;
@@ -18,7 +18,7 @@ export const getClientes = async (req, res) => {
   }
 };
 
-// 🔹 Crear cliente
+// Crear cliente
 export const createCliente = async (req, res) => {
   try {
     const {
@@ -52,7 +52,7 @@ export const createCliente = async (req, res) => {
   }
 };
 
-// 🔹 Actualizar cliente
+// Actualizar cliente
 export const updateCliente = async (req, res) => {
   try {
     const { id } = req.params;
@@ -66,7 +66,7 @@ export const updateCliente = async (req, res) => {
   }
 };
 
-// 🔹 Desactivar cliente (soft delete)
+// Desactivar cliente (soft delete)
 export const deleteCliente = async (req, res) => {
   try {
     const { id } = req.params;

@@ -9,16 +9,16 @@ import { verificarToken } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// 🔹 Obtener clientes
+// Obtener clientes
 router.get("/", verificarToken, getClientes);
 
-// 🔹 Crear cliente
+// Crear cliente
 router.post("/", verificarToken, createCliente);
 
-// 🔹 Actualizar cliente
+// Actualizar cliente
 router.put("/:id", verificarToken, updateCliente);
 
-// 🔹 Desactivar cliente
+// Desactivar cliente
 router.delete("/:id", verificarToken, deleteCliente);
 
 export default router;

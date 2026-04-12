@@ -3,13 +3,38 @@ import { pool } from "../config/db.js";
 // ================= PRODUCTOS
 
 export const getProductos = async () => {
-  const { rows } = await pool.query(
-    "SELECT * FROM productos ORDER BY id DESC"
-  );
+  const { rows } = await pool.query(`
+    SELECT 
+      id,
+      nombre,
+      tipo,
+      descripcion,
+      precio_venta,
+      precio_costo,
+      stock_actual,
+      stock_minimo,
+      unidad,
+      activo::boolean AS activo
+    FROM productos
+    ORDER BY id DESC
+  `);
+
   return rows;
 };
 
 export const createProducto = async (data) => {
+  const existe = await pool.query(
+    "SELECT 1 FROM productos WHERE LOWER(nombre) = LOWER($1)",
+    [data.nombre]
+  );
+
+  if (existe.rows.length > 0) {
+    throw new Error("Ya existe un producto con ese nombre");
+  }
+  if (data.precio_venta < 0 || data.precio_costo < 0) {
+    throw new Error("Los precios no pueden ser negativos");
+  }
+
   const query = `
     INSERT INTO productos
     (nombre, tipo, descripcion, precio_venta, precio_costo, stock_actual, stock_minimo, unidad, activo)
@@ -20,10 +45,10 @@ export const createProducto = async (data) => {
     data.nombre,
     data.tipo,
     data.descripcion || "",
-    data.precio_venta || 0,
-    data.precio_costo || 0,
-    data.stock_actual || 0,
-    data.stock_minimo || 10,
+    Number(data.precio_venta) || 0,
+    Number(data.precio_costo) || 0,
+    Number(data.stock_actual) || 0,
+    Number(data.stock_minimo) || 10,
     data.unidad || "unidad",
     data.activo ?? true
   ];
@@ -32,6 +57,18 @@ export const createProducto = async (data) => {
 };
 
 export const updateProducto = async (id, data) => {
+  const existe = await pool.query(
+    "SELECT 1 FROM productos WHERE LOWER(nombre) = LOWER($1) AND id != $2",
+    [data.nombre, id]
+  );
+
+  if (existe.rows.length > 0) {
+    throw new Error("Nombre ya en uso por otro producto");
+  }
+  if (data.precio_venta < 0 || data.precio_costo < 0) {
+    throw new Error("Los precios no pueden ser negativos");
+  }
+
   const query = `
     UPDATE productos SET
     nombre=$1,
@@ -50,10 +87,10 @@ export const updateProducto = async (id, data) => {
     data.nombre,
     data.tipo,
     data.descripcion || "",
-    data.precio_venta || 0,
-    data.precio_costo || 0,
-    data.stock_actual || 0,
-    data.stock_minimo || 10,
+    Number(data.precio_venta) || 0,
+    Number(data.precio_costo) || 0,
+    Number(data.stock_actual) || 0,
+    Number(data.stock_minimo) || 10,
     data.unidad || "unidad",
     data.activo ?? true,
     id
@@ -65,6 +102,13 @@ export const updateProducto = async (id, data) => {
 export const deleteProducto = async (id) => {
   await pool.query(
     "UPDATE productos SET activo=false WHERE id=$1",
+    [id]
+  );
+};
+
+export const activarProducto = async (id) => {
+  await pool.query(
+    "UPDATE productos SET activo=true WHERE id=$1",
     [id]
   );
 };

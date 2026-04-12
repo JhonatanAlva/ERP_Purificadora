@@ -37,6 +37,15 @@ export const deleteProducto = async (req, res) => {
   }
 };
 
+export const activarProducto = async (req, res) => {
+  try {
+    await service.activarProducto(req.params.id);
+    res.json({ message: "Producto activado" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // MOVIMIENTOS
 export const getMovimientos = async (req, res) => {
   try {
