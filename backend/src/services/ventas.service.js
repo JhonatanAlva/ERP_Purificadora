@@ -65,7 +65,7 @@ export const crearVenta = async (data) => {
     } = data;
 
     // =========================
-    // VALIDACIONES
+    // VALIDACIONES GENERALES
     // =========================
     if (!items || items.length === 0) {
       throw new Error("La venta debe tener al menos un producto");
@@ -82,24 +82,24 @@ export const crearVenta = async (data) => {
     const folio = `V-${Date.now()}`;
 
     // =========================
-    // CREAR VENTA
+    // INSERTAR VENTA
     // =========================
     const ventaRes = await client.query(
       `INSERT INTO ventas 
-      (folio, cliente_id, fecha, subtotal, descuento, total, metodo_pago, tipo_venta, estado, ruta_id, notas)
-      VALUES ($1,$2,NOW(),$3,$4,$5,$6,$7,$8,$9,$10)
-      RETURNING *`,
+       (folio, cliente_id, fecha, subtotal, descuento, total, metodo_pago, tipo_venta, estado, ruta_id, notas)
+       VALUES ($1,$2,NOW(),$3,$4,$5,$6,$7,$8,$9,$10)
+       RETURNING *`,
       [
         folio,
-        cliente_id || null,
-        Number(subtotal) || 0,
+        cliente_id  || null,
+        Number(subtotal)  || 0,
         Number(descuento) || 0,
-        Number(total) || 0,
+        Number(total)     || 0,
         metodo_pago,
         tipo_venta,
         estado,
         ruta_id || null,
-        notas || ""
+        notas   || ""
       ]
     );
 
@@ -110,60 +110,64 @@ export const crearVenta = async (data) => {
     // =========================
     for (const item of items) {
 
-      // 🔍 VALIDAR PRODUCTO
+      // SELECT FOR UPDATE — bloquea la fila para evitar race conditions
+      // Si dos ventas llegan al mismo tiempo, la segunda espera a que
+      // la primera haga COMMIT antes de leer el stock
       const prodRes = await client.query(
-        "SELECT * FROM productos WHERE id = $1",
+        "SELECT * FROM productos WHERE id = $1 FOR UPDATE",
         [item.producto_id]
       );
 
       if (prodRes.rows.length === 0) {
-        throw new Error("Producto no encontrado");
+        throw new Error(`Producto no encontrado (id: ${item.producto_id})`);
       }
 
-      const producto = prodRes.rows[0];
+      const producto     = prodRes.rows[0];
+      const stockAnterior = producto.stock_actual;
 
-      // 🔥 VALIDAR STOCK
-      if (producto.stock_actual < item.cantidad) {
-        throw new Error(`Stock insuficiente para ${producto.nombre}`);
+      // Validación previa — mensaje amigable para el usuario
+      if (stockAnterior < item.cantidad) {
+        throw new Error(
+          `Stock insuficiente para "${producto.nombre}". Disponible: ${stockAnterior}, solicitado: ${item.cantidad}`
+        );
       }
 
       const subtotalItem = item.precio * item.cantidad;
 
-      // INSERT DETALLE
+      // INSERT detalle
       await client.query(
         `INSERT INTO venta_detalle
-        (venta_id, producto_id, cantidad, precio_unitario, subtotal)
-        VALUES ($1,$2,$3,$4,$5)`,
-        [
-          venta.id,
-          item.producto_id,
-          item.cantidad,
-          item.precio,
-          subtotalItem
-        ]
+         (venta_id, producto_id, cantidad, precio_unitario, subtotal)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [venta.id, item.producto_id, item.cantidad, item.precio, subtotalItem]
       );
 
-      const nuevoStock = producto.stock_actual - item.cantidad;
-
-      // ACTUALIZAR STOCK
-      await client.query(
+      // Actualización atómica — segunda línea de defensa contra stock negativo
+      // Solo actualiza si stock_actual >= cantidad en este preciso momento
+      const updateRes = await client.query(
         `UPDATE productos
-         SET stock_actual = $1
-         WHERE id = $2`,
-        [nuevoStock, item.producto_id]
+         SET stock_actual = stock_actual - $1
+         WHERE id = $2 AND stock_actual >= $1
+         RETURNING stock_actual`,
+        [item.cantidad, item.producto_id]
       );
 
-      // MOVIMIENTO INVENTARIO (MISMO ESTILO QUE INVENTARIO 🔥)
+      // Si rowCount = 0 significa que entre el SELECT y el UPDATE
+      // otra transacción concurrente consumió el stock
+      if (updateRes.rowCount === 0) {
+        throw new Error(
+          `Stock insuficiente para "${producto.nombre}" (conflicto concurrente)`
+        );
+      }
+
+      const nuevoStock = updateRes.rows[0].stock_actual;
+
+      // Movimiento de inventario
       await client.query(
         `INSERT INTO movimientos_inventario
-        (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-        VALUES ($1,'salida',$2,$3,$4,'venta',NOW())`,
-        [
-          item.producto_id,
-          item.cantidad,
-          producto.stock_actual,
-          nuevoStock
-        ]
+         (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
+         VALUES ($1,'salida',$2,$3,$4,'venta',NOW())`,
+        [item.producto_id, item.cantidad, stockAnterior, nuevoStock]
       );
     }
 
@@ -173,19 +177,13 @@ export const crearVenta = async (data) => {
     if (metodo_pago === "credito") {
       await client.query(
         `INSERT INTO creditos
-        (venta_id, cliente_id, monto_total, saldo_actual, estado, created_at)
-        VALUES ($1,$2,$3,$4,'pendiente',NOW())`,
-        [
-          venta.id,
-          cliente_id,
-          total,
-          total
-        ]
+         (venta_id, cliente_id, monto_total, saldo_actual, estado, created_at)
+         VALUES ($1,$2,$3,$4,'pendiente',NOW())`,
+        [venta.id, cliente_id, total, total]
       );
     }
 
     await client.query("COMMIT");
-
     return venta;
 
   } catch (error) {
@@ -205,14 +203,16 @@ export const cancelarVenta = async (id) => {
   try {
     await client.query("BEGIN");
 
-    // Verificar que existe y no está ya cancelada
+    // FOR UPDATE también aquí para evitar doble cancelación concurrente
     const ventaRes = await client.query(
-      "SELECT * FROM ventas WHERE id = $1",
+      "SELECT * FROM ventas WHERE id = $1 FOR UPDATE",
       [id]
     );
 
     if (ventaRes.rows.length === 0) throw new Error("Venta no encontrada");
+
     const venta = ventaRes.rows[0];
+
     if (venta.estado === "cancelada") throw new Error("La venta ya está cancelada");
 
     // Obtener items de la venta
@@ -223,26 +223,34 @@ export const cancelarVenta = async (id) => {
 
     // Regresar stock por cada producto
     for (const item of itemsRes.rows) {
+
+      // FOR UPDATE al devolver stock también
       const prodRes = await client.query(
-        "SELECT * FROM productos WHERE id = $1",
+        "SELECT * FROM productos WHERE id = $1 FOR UPDATE",
         [item.producto_id]
       );
 
       if (prodRes.rows.length === 0) continue;
-      const producto = prodRes.rows[0];
-      const nuevoStock = producto.stock_actual + item.cantidad;
 
-      await client.query(
-        "UPDATE productos SET stock_actual = $1 WHERE id = $2",
-        [nuevoStock, item.producto_id]
+      const stockAnterior = prodRes.rows[0].stock_actual;
+
+      // Devolver stock de forma atómica
+      const updateRes = await client.query(
+        `UPDATE productos
+         SET stock_actual = stock_actual + $1
+         WHERE id = $2
+         RETURNING stock_actual`,
+        [item.cantidad, item.producto_id]
       );
 
-      // Registrar movimiento de entrada por cancelación
+      const nuevoStock = updateRes.rows[0].stock_actual;
+
+      // Movimiento de entrada por cancelación
       await client.query(
         `INSERT INTO movimientos_inventario
-        (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-        VALUES ($1,'entrada',$2,$3,$4,'cancelacion_venta',NOW())`,
-        [item.producto_id, item.cantidad, producto.stock_actual, nuevoStock]
+         (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
+         VALUES ($1,'entrada',$2,$3,$4,'cancelacion_venta',NOW())`,
+        [item.producto_id, item.cantidad, stockAnterior, nuevoStock]
       );
     }
 

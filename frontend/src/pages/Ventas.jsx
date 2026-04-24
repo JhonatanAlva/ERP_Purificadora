@@ -270,7 +270,7 @@ const Ventas = () => {
         </div>
 
         {/* TABLA */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
           {loading ? (
             <div className="text-center py-16 text-gray-400 text-sm">Cargando ventas...</div>
           ) : filtered.length === 0 ? (
