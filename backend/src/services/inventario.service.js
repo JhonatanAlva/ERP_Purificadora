@@ -120,9 +120,8 @@ export const getMovimientos = async () => {
     SELECT m.*, p.nombre AS producto_nombre
     FROM movimientos_inventario m
     JOIN productos p ON p.id = m.producto_id
-    ORDER BY m.id DESC
+    ORDER BY m.fecha DESC, m.id DESC
   `);
-
   return rows;
 };
 

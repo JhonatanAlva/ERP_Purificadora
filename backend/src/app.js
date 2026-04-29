@@ -6,6 +6,7 @@ import inventarioRoutes from "./routes/inventario.routes.js";
 import ventasRoutes from "./routes/ventas.routes.js";
 import pedidosRoutes from "./routes/pedidos.routes.js";
 import proveedoresRoutes from "./routes/proveedores.routes.js";
+import comprasRoutes from "./routes/compras.routes.js";
 
 const app = express();
 
@@ -27,5 +28,6 @@ app.use("/api/inventario", inventarioRoutes);
 app.use("/api/ventas", ventasRoutes);
 app.use("/api/pedidos", pedidosRoutes);
 app.use("/api/proveedores", proveedoresRoutes);
+app.use("/api/compras", comprasRoutes);
 
 export default app;

@@ -6,7 +6,6 @@ import {
   AlertTriangle, ArrowUp, ArrowDown, RefreshCw, X,
 } from "lucide-react";
 
-// ================= TOAST
 const Toast = ({ msg, type }) => (
   <div className={`fixed top-5 right-5 px-4 py-3 rounded-xl text-white shadow-xl z-50 flex items-center gap-2 text-sm font-medium
     ${type === "error" ? "bg-red-500" : "bg-emerald-500"}`}>
@@ -14,7 +13,6 @@ const Toast = ({ msg, type }) => (
   </div>
 );
 
-// ================= MODAL CONFIRMACIÓN
 const ConfirmModal = ({ nombre, onConfirm, onCancel }) => (
   <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
     <div className="bg-white w-[360px] rounded-2xl shadow-2xl overflow-hidden">
@@ -69,6 +67,11 @@ const Inventario = () => {
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
 
+  // ── Filtros movimientos ──
+  const [filtroMovProducto, setFiltroMovProducto] = useState("");
+  const [filtroMovTipo, setFiltroMovTipo] = useState("todos");
+  const [filtroMovFecha, setFiltroMovFecha] = useState("");
+
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY_PROD);
   const [editId, setEditId] = useState(null);
@@ -109,6 +112,16 @@ const Inventario = () => {
       return true;
     });
 
+  // ── Movimientos filtrados ──
+  const movimientosFiltrados = movimientos.filter((m) => {
+    const matchProducto = !filtroMovProducto ||
+      m.producto_nombre?.toLowerCase().includes(filtroMovProducto.toLowerCase());
+    const matchTipo = filtroMovTipo === "todos" || m.tipo_movimiento === filtroMovTipo;
+    const matchFecha = !filtroMovFecha ||
+      (m.fecha && m.fecha.startsWith(filtroMovFecha));
+    return matchProducto && matchTipo && matchFecha;
+  });
+
   const alertas = productos.filter(
     (p) => p.stock_actual <= p.stock_minimo && p.activo !== false
   );
@@ -129,9 +142,7 @@ const Inventario = () => {
     }
   };
 
-  const handleDelete = (id, nombre) => {
-    setConfirmModal({ id, nombre });
-  };
+  const handleDelete = (id, nombre) => setConfirmModal({ id, nombre });
 
   const confirmDelete = async () => {
     try {
@@ -166,6 +177,24 @@ const Inventario = () => {
     }
   };
 
+  const limpiarFiltrosMov = () => {
+    setFiltroMovProducto("");
+    setFiltroMovTipo("todos");
+    setFiltroMovFecha("");
+  };
+
+  const hayFiltrosMov = filtroMovProducto || filtroMovTipo !== "todos" || filtroMovFecha;
+
+  const formatFecha = (fechaStr) => {
+    if (!fechaStr) return "—";
+    const d = new Date(fechaStr);
+    if (isNaN(d)) return fechaStr;
+    return d.toLocaleDateString("es-GT", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  };
+
   const inputCls = "w-full mt-1 bg-gray-50 border border-gray-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition";
 
   return (
@@ -188,23 +217,19 @@ const Inventario = () => {
               <Package className="text-blue-600" /> Inventario
             </h1>
             <p className="text-sm text-gray-400 mt-0.5">
-              {productos.length} productos · {" "}
+              {productos.length} productos ·{" "}
               <span className={alertas.length > 0 ? "text-amber-500 font-medium" : ""}>
                 {alertas.length} alertas de stock
               </span>
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setAjusteModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-sm font-medium transition"
-            >
+            <button onClick={() => setAjusteModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-sm font-medium transition">
               <RefreshCw size={15} /> Ajustar Stock
             </button>
-            <button
-              onClick={() => { setForm(EMPTY_PROD); setEditId(null); setModal(true); }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm font-medium transition shadow-sm shadow-blue-200"
-            >
+            <button onClick={() => { setForm(EMPTY_PROD); setEditId(null); setModal(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm font-medium transition shadow-sm shadow-blue-200">
               <Plus size={15} /> Nuevo Producto
             </button>
           </div>
@@ -237,7 +262,7 @@ const Inventario = () => {
           ))}
         </div>
 
-        {/* FILTROS + BUSCAR */}
+        {/* FILTROS PRODUCTOS */}
         {tab === "productos" && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
@@ -261,6 +286,55 @@ const Inventario = () => {
           </div>
         )}
 
+        {/* FILTROS MOVIMIENTOS */}
+        {tab === "movimientos" && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex flex-wrap gap-3 items-center">
+            {/* Buscar por producto */}
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+              <input
+                className="bg-gray-50 border border-gray-200 p-2 pl-8 rounded-lg w-full outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                placeholder="Buscar producto..."
+                value={filtroMovProducto}
+                onChange={(e) => setFiltroMovProducto(e.target.value)}
+              />
+            </div>
+
+            {/* Filtro tipo */}
+            <select
+              value={filtroMovTipo}
+              onChange={(e) => setFiltroMovTipo(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="todos">Todos los tipos</option>
+              <option value="entrada">↑ Entradas</option>
+              <option value="salida">↓ Salidas</option>
+            </select>
+
+            {/* Filtro fecha */}
+            <input
+              type="date"
+              value={filtroMovFecha}
+              onChange={(e) => setFiltroMovFecha(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-500"
+            />
+
+            {/* Limpiar filtros */}
+            {hayFiltrosMov && (
+              <button
+                onClick={limpiarFiltrosMov}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition"
+              >
+                <X size={13} /> Limpiar
+              </button>
+            )}
+
+            <span className="text-xs text-gray-400 ml-auto">
+              {movimientosFiltrados.length} de {movimientos.length} movimientos
+            </span>
+          </div>
+        )}
+
         {/* TABLA PRODUCTOS */}
         {tab === "productos" && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
@@ -278,11 +352,7 @@ const Inventario = () => {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
-                      No se encontraron productos
-                    </td>
-                  </tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">No se encontraron productos</td></tr>
                 )}
                 {filtered.map((p) => (
                   <tr key={p.id} className={`border-t border-gray-50 hover:bg-gray-50/70 transition ${!p.activo ? "opacity-50" : ""}`}>
@@ -295,9 +365,7 @@ const Inventario = () => {
                         {TIPO_LABELS[p.tipo]}
                       </span>
                     </td>
-                    <td className="text-center p-4 font-semibold text-emerald-600">
-                      Q {Number(p.precio_venta).toFixed(2)}
-                    </td>
+                    <td className="text-center p-4 font-semibold text-emerald-600">Q {Number(p.precio_venta).toFixed(2)}</td>
                     <td className="text-center p-4">
                       <span className={`font-bold text-base ${p.stock_actual <= p.stock_minimo ? "text-red-500" : "text-gray-700"}`}>
                         {p.stock_actual}
@@ -342,22 +410,26 @@ const Inventario = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Fecha</th>
                   <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Producto</th>
                   <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
                   <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Cantidad</th>
+                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Anterior</th>
                   <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Nuevo</th>
+                  <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Motivo</th>
                 </tr>
               </thead>
               <tbody>
-                {movimientos.length === 0 && (
+                {movimientosFiltrados.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="text-center py-12 text-gray-400 text-sm">
-                      No hay movimientos registrados
+                    <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
+                      {hayFiltrosMov ? "No hay movimientos con esos filtros" : "No hay movimientos registrados"}
                     </td>
                   </tr>
                 )}
-                {movimientos.map((m) => (
+                {movimientosFiltrados.map((m) => (
                   <tr key={m.id} className="border-t border-gray-50 hover:bg-gray-50/70 transition">
+                    <td className="p-4 text-xs text-gray-400 whitespace-nowrap">{formatFecha(m.fecha)}</td>
                     <td className="p-4 font-medium text-gray-700">{m.producto_nombre}</td>
                     <td className="text-center p-4">
                       {m.tipo_movimiento === "entrada" ? (
@@ -371,159 +443,136 @@ const Inventario = () => {
                       )}
                     </td>
                     <td className="text-center p-4 font-bold text-gray-700">{m.cantidad}</td>
-                    <td className="text-center p-4 text-gray-500">{m.stock_nuevo}</td>
+                    <td className="text-center p-4 text-gray-400">{m.stock_anterior ?? "—"}</td>
+                    <td className="text-center p-4 text-gray-600 font-medium">{m.stock_nuevo}</td>
+                    <td className="p-4 text-xs text-gray-400 max-w-[160px] truncate">{m.motivo || "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-
-        {/* MODAL PRODUCTO */}
-        {modal && (
-          <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
-            <div className="bg-white w-full max-w-[520px] rounded-2xl shadow-2xl overflow-hidden">
-              <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-                <h2 className="font-bold text-lg text-gray-800">
-                  {editId ? "Editar Producto" : "Nuevo Producto"}
-                </h2>
-                <button onClick={() => setModal(false)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre *</label>
-                  <input placeholder="Nombre del producto" value={form.nombre}
-                    onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                    className={inputCls} />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</label>
-                    <select value={form.tipo}
-                      onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-                      className={inputCls}>
-                      {Object.entries(TIPO_LABELS).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</label>
-                    <input value={form.unidad}
-                      onChange={(e) => setForm({ ...form, unidad: e.target.value })}
-                      className={inputCls} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio Venta</label>
-                    <input type="number" value={form.precio_venta}
-                      onChange={(e) => setForm({ ...form, precio_venta: e.target.value })}
-                      className={inputCls} />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio Costo</label>
-                    <input type="number" value={form.precio_costo}
-                      onChange={(e) => setForm({ ...form, precio_costo: e.target.value })}
-                      className={inputCls} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Actual</label>
-                    <input type="number" value={form.stock_actual}
-                      onChange={(e) => setForm({ ...form, stock_actual: e.target.value })}
-                      className={inputCls} />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Mínimo</label>
-                    <input type="number" value={form.stock_minimo}
-                      onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })}
-                      className={inputCls} />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descripción</label>
-                  <input placeholder="Descripción opcional" value={form.descripcion}
-                    onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
-                    className={inputCls} />
-                </div>
-              </div>
-              <div className="flex gap-3 p-4 border-t border-gray-100 bg-gray-50/50">
-                <button onClick={() => setModal(false)}
-                  className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-100 transition">
-                  Cancelar
-                </button>
-                <button onClick={handleSave}
-                  className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 transition shadow-sm shadow-blue-200">
-                  {editId ? "Guardar cambios" : "Crear Producto"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL AJUSTE */}
-        {ajusteModal && (
-          <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
-            <div className="bg-white w-full max-w-[420px] rounded-2xl shadow-2xl overflow-hidden">
-              <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-                <h2 className="font-bold text-lg text-gray-800">Ajuste de Stock</h2>
-                <button onClick={() => setAjusteModal(false)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Producto</label>
-                  <select onChange={(e) => setAjusteForm({ ...ajusteForm, producto_id: e.target.value })}
-                    className={inputCls}>
-                    <option value="">Seleccionar producto...</option>
-                    {productos.filter(p => p.activo).map((p) => (
-                      <option key={p.id} value={p.id}>{p.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo de Ajuste</label>
-                  <select onChange={(e) => setAjusteForm({ ...ajusteForm, tipo_movimiento: e.target.value })}
-                    className={inputCls}>
-                    <option value="entrada">➕ Agregar al stock</option>
-                    <option value="salida">➖ Reducir stock</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cantidad</label>
-                  <input type="number" placeholder="0"
-                    onChange={(e) => setAjusteForm({ ...ajusteForm, cantidad: Number(e.target.value) })}
-                    className={inputCls} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notas</label>
-                  <input placeholder="Motivo del ajuste..."
-                    onChange={(e) => setAjusteForm({ ...ajusteForm, motivo: e.target.value })}
-                    className={inputCls} />
-                </div>
-              </div>
-              <div className="flex gap-3 p-4 border-t border-gray-100 bg-gray-50/50">
-                <button onClick={() => setAjusteModal(false)}
-                  className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-100 transition">
-                  Cancelar
-                </button>
-                <button onClick={handleAjuste}
-                  className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 transition shadow-sm shadow-blue-200">
-                  Aplicar Ajuste
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
       </div>
+
+      {/* MODAL PRODUCTO */}
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white w-full max-w-[520px] rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+              <h2 className="font-bold text-lg text-gray-800">{editId ? "Editar Producto" : "Nuevo Producto"}</h2>
+              <button onClick={() => setModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre *</label>
+                <input placeholder="Nombre del producto" value={form.nombre}
+                  onChange={(e) => setForm({ ...form, nombre: e.target.value })} className={inputCls} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</label>
+                  <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })} className={inputCls}>
+                    {Object.entries(TIPO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</label>
+                  <input value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })} className={inputCls} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio Venta</label>
+                  <input type="number" value={form.precio_venta} onChange={(e) => setForm({ ...form, precio_venta: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio Costo</label>
+                  <input type="number" value={form.precio_costo} onChange={(e) => setForm({ ...form, precio_costo: e.target.value })} className={inputCls} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Actual</label>
+                  <input type="number" value={form.stock_actual} onChange={(e) => setForm({ ...form, stock_actual: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Mínimo</label>
+                  <input type="number" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} className={inputCls} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descripción</label>
+                <input placeholder="Descripción opcional" value={form.descripcion}
+                  onChange={(e) => setForm({ ...form, descripcion: e.target.value })} className={inputCls} />
+              </div>
+            </div>
+            <div className="flex gap-3 p-4 border-t border-gray-100 bg-gray-50/50">
+              <button onClick={() => setModal(false)}
+                className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-100 transition">
+                Cancelar
+              </button>
+              <button onClick={handleSave}
+                className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 transition shadow-sm shadow-blue-200">
+                {editId ? "Guardar cambios" : "Crear Producto"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL AJUSTE */}
+      {ajusteModal && (
+        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white w-full max-w-[420px] rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+              <h2 className="font-bold text-lg text-gray-800">Ajuste de Stock</h2>
+              <button onClick={() => setAjusteModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Producto</label>
+                <select onChange={(e) => setAjusteForm({ ...ajusteForm, producto_id: e.target.value })} className={inputCls}>
+                  <option value="">Seleccionar producto...</option>
+                  {productos.filter(p => p.activo).map((p) => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo de Ajuste</label>
+                <select onChange={(e) => setAjusteForm({ ...ajusteForm, tipo_movimiento: e.target.value })} className={inputCls}>
+                  <option value="entrada">➕ Agregar al stock</option>
+                  <option value="salida">➖ Reducir stock</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cantidad</label>
+                <input type="number" placeholder="0"
+                  onChange={(e) => setAjusteForm({ ...ajusteForm, cantidad: Number(e.target.value) })} className={inputCls} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notas</label>
+                <input placeholder="Motivo del ajuste..."
+                  onChange={(e) => setAjusteForm({ ...ajusteForm, motivo: e.target.value })} className={inputCls} />
+              </div>
+            </div>
+            <div className="flex gap-3 p-4 border-t border-gray-100 bg-gray-50/50">
+              <button onClick={() => setAjusteModal(false)}
+                className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-100 transition">
+                Cancelar
+              </button>
+              <button onClick={handleAjuste}
+                className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 transition shadow-sm shadow-blue-200">
+                Aplicar Ajuste
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

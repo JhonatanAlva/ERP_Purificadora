@@ -72,7 +72,7 @@ const Ventas = () => {
         api.get("/clientes?page=1&limit=100&estado=activos"),
       ]);
       setVentas(vRes.data);
-      setProductos(pRes.data.filter(p => p.activo));
+      setProductos(pRes.data.filter(p => p.activo === true || p.activo === "true"));
       setClientes(cRes.data.data || []);
     } catch (err) {
       showToast(`Error: ${err.response?.data?.error || err.message}`, "error");
