@@ -1,6 +1,6 @@
 import Layout from "../components/Layout";
-import { useState, useEffect } from "react";
-import { Users, Plus, Trash2, X, Pencil, Search, Phone, MapPin, Package, CheckCircle, XCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Users, Plus, Trash2, X, Pencil, Search, Phone, MapPin, Package, CheckCircle, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../services/api";
 
 const TIPO_COLORS = {
@@ -8,6 +8,8 @@ const TIPO_COLORS = {
   menudeo: "bg-blue-100 text-blue-700",
   ruta: "bg-orange-100 text-orange-700",
 };
+
+const LIMIT = 10;
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
@@ -22,6 +24,7 @@ export default function Clientes() {
 
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
+  const [totalRegistros, setTotalRegistros] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -36,21 +39,36 @@ export default function Clientes() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const obtenerClientes = async (page = 1) => {
+  const obtenerClientes = useCallback(async (page = 1) => {
     try {
       setLoading(true);
-      const res = await api.get(`/clientes?page=${page}&limit=10&estado=${filtroEstado}`);
+      const params = new URLSearchParams({
+        page,
+        limit: LIMIT,
+        ...(filtroEstado !== "todos" && { estado: filtroEstado }),
+        ...(filtroTipo !== "todos" && { tipo: filtroTipo }),
+        ...(busqueda.trim() && { busqueda: busqueda.trim() }),
+      });
+      const res = await api.get(`/clientes?${params}`);
       setClientes(res.data.data);
       setPaginaActual(res.data.page);
       setTotalPaginas(res.data.totalPages);
+      setTotalRegistros(res.data.total ?? res.data.data.length);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filtroEstado, filtroTipo, busqueda]);
 
-  useEffect(() => { obtenerClientes(paginaActual); }, [paginaActual, filtroEstado]);
+  // Cuando cambian filtros, volver a página 1
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [filtroEstado, filtroTipo, busqueda]);
+
+  useEffect(() => {
+    obtenerClientes(paginaActual);
+  }, [paginaActual, obtenerClientes]);
 
   const abrirCrear = () => {
     setEditando(null);
@@ -68,9 +86,9 @@ export default function Clientes() {
         setClientes(clientes.map((c) => (c.id === editando ? res.data : c)));
         mostrarToast("Cliente actualizado");
       } else {
-        const res = await api.post("/clientes", form);
-        setClientes([res.data, ...clientes]);
+        await api.post("/clientes", form);
         mostrarToast("Cliente creado");
+        obtenerClientes(1);
       }
       setShowModal(false);
     } catch (error) {
@@ -95,14 +113,18 @@ export default function Clientes() {
     } catch (error) { console.error(error); }
   };
 
-  const clientesFiltrados = clientes.filter((c) => {
-    const matchBusqueda =
-      c.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      (c.telefono || "").includes(busqueda) ||
-      (c.zona || "").toLowerCase().includes(busqueda.toLowerCase());
-    const matchTipo = filtroTipo === "todos" || c.tipo === filtroTipo;
-    return matchBusqueda && matchTipo;
-  });
+  // Genera el rango de páginas a mostrar (máximo 5 botones)
+  const paginasVisibles = () => {
+    const delta = 2;
+    const range = [];
+    const left = Math.max(1, paginaActual - delta);
+    const right = Math.min(totalPaginas, paginaActual + delta);
+    for (let i = left; i <= right; i++) range.push(i);
+    return range;
+  };
+
+  const inicio = (paginaActual - 1) * LIMIT + 1;
+  const fin = Math.min(paginaActual * LIMIT, totalRegistros);
 
   return (
     <Layout>
@@ -121,7 +143,11 @@ export default function Clientes() {
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
               <Users className="w-5 h-5 text-sky-500" /> Clientes
             </h2>
-            <p className="text-sm text-gray-500">Página {paginaActual} de {totalPaginas}</p>
+            <p className="text-sm text-gray-500">
+              {totalRegistros > 0
+                ? `Mostrando ${inicio}–${fin} de ${totalRegistros} clientes`
+                : "Sin clientes registrados"}
+            </p>
           </div>
           <button onClick={abrirCrear}
             className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-sm">
@@ -147,7 +173,7 @@ export default function Clientes() {
             <option value="mayorista">Mayorista</option>
             <option value="ruta">Ruta</option>
           </select>
-          <select value={filtroEstado} onChange={(e) => { setFiltroEstado(e.target.value); setPaginaActual(1); }}
+          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300">
             <option value="todos">Estado</option>
             <option value="activos">Activos</option>
@@ -159,7 +185,7 @@ export default function Clientes() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           {loading ? (
             <div className="text-center py-16 text-gray-400 text-sm">Cargando...</div>
-          ) : clientesFiltrados.length === 0 ? (
+          ) : clientes.length === 0 ? (
             <div className="text-center py-16">
               <Users className="w-12 h-12 text-gray-200 mx-auto mb-3" />
               <p className="text-gray-400 text-sm">No se encontraron clientes</p>
@@ -183,7 +209,7 @@ export default function Clientes() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {clientesFiltrados.map((c) => (
+                  {clientes.map((c) => (
                     <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
                         <p className="font-medium text-gray-800">{c.nombre}</p>
@@ -222,7 +248,6 @@ export default function Clientes() {
                       </td>
                       <td className="px-5 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          {/* Switch activo/inactivo */}
                           <div
                             onClick={() => c.activo ? setConfirmDelete(c.id) : activarCliente(c.id)}
                             className={`w-9 h-5 flex items-center rounded-full cursor-pointer transition-colors ${c.activo ? "bg-emerald-400" : "bg-gray-300"}`}
@@ -245,35 +270,78 @@ export default function Clientes() {
               </table>
             </div>
           )}
-        </div>
 
-        {/* PAGINACIÓN */}
-        {totalPaginas > 1 && (
-          <div className="flex justify-center items-center gap-1.5">
-            <button
-              onClick={() => setPaginaActual(paginaActual - 1)}
-              disabled={paginaActual === 1}
-              className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-30 transition-colors"
-            >
-              Anterior
-            </button>
-            {[...Array(totalPaginas)].map((_, i) => (
-              <button key={i} onClick={() => setPaginaActual(i + 1)}
-                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${paginaActual === i + 1
-                  ? "bg-sky-600 text-white font-medium"
-                  : "border border-gray-200 hover:bg-gray-50"}`}>
-                {i + 1}
-              </button>
-            ))}
-            <button
-              onClick={() => setPaginaActual(paginaActual + 1)}
-              disabled={paginaActual === totalPaginas}
-              className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-30 transition-colors"
-            >
-              Siguiente
-            </button>
-          </div>
-        )}
+          {/* PAGINACIÓN dentro del card */}
+          {totalPaginas > 1 && (
+            <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 text-sm text-gray-500">
+              <span className="hidden sm:block">
+                {inicio}–{fin} de {totalRegistros} clientes
+              </span>
+              <div className="flex items-center gap-1 mx-auto sm:mx-0">
+                {/* Anterior */}
+                <button
+                  onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                  disabled={paginaActual === 1}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {/* Primera página + ellipsis */}
+                {paginasVisibles()[0] > 1 && (
+                  <>
+                    <button onClick={() => setPaginaActual(1)}
+                      className="w-8 h-8 rounded-lg text-xs hover:bg-gray-100 transition-colors">
+                      1
+                    </button>
+                    {paginasVisibles()[0] > 2 && (
+                      <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>
+                    )}
+                  </>
+                )}
+
+                {/* Páginas visibles */}
+                {paginasVisibles().map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPaginaActual(n)}
+                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                      paginaActual === n
+                        ? "bg-sky-600 text-white"
+                        : "hover:bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+
+                {/* Ellipsis + última página */}
+                {paginasVisibles()[paginasVisibles().length - 1] < totalPaginas && (
+                  <>
+                    {paginasVisibles()[paginasVisibles().length - 1] < totalPaginas - 1 && (
+                      <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>
+                    )}
+                    <button onClick={() => setPaginaActual(totalPaginas)}
+                      className="w-8 h-8 rounded-lg text-xs hover:bg-gray-100 transition-colors">
+                      {totalPaginas}
+                    </button>
+                  </>
+                )}
+
+                {/* Siguiente */}
+                <button
+                  onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+                  disabled={paginaActual === totalPaginas}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors"
+                  title="Página siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Modal Crear/Editar ── */}

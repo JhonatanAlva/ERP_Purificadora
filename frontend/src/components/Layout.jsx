@@ -151,6 +151,7 @@ export default function Layout({ children }) {
         {/* FOOTER */}
         <div className="px-4 py-3 border-t border-white/10">
           <p className="text-gray-500 text-xs text-center">© 2026 Purificadora El Glaciar</p>
+          <p className="text-gray-500 text-xs text-center">Desarrollado por Jhonatan Alvarado</p>
         </div>
       </aside>
 

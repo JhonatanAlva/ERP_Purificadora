@@ -9,14 +9,16 @@ export const getAllCompras = async ({ estado, proveedor_id, fecha_inicio, fecha_
 
   if (estado) { conditions.push(`c.estado = $${idx++}`); values.push(estado); }
   if (proveedor_id) { conditions.push(`c.proveedor_id = $${idx++}`); values.push(proveedor_id); }
-  if (fecha_inicio) { conditions.push(`TO_CHAR(c.fecha, 'YYYY-MM-DD') AS fecha >= $${idx++}`); values.push(fecha_inicio); }
-  if (fecha_fin) { conditions.push(`TO_CHAR(c.fecha, 'YYYY-MM-DD') AS fecha <= $${idx++}`); values.push(fecha_fin); }
+  // BUG 1 CORREGIDO: era "TO_CHAR(...) AS fecha >= $n" — sintaxis SQL inválida
+  if (fecha_inicio) { conditions.push(`c.fecha::date >= $${idx++}`); values.push(fecha_inicio); }
+  if (fecha_fin) { conditions.push(`c.fecha::date <= $${idx++}`); values.push(fecha_fin); }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const offset = (page - 1) * limit;
 
   const { rows } = await pool.query(
     `SELECT c.*,
+            TO_CHAR(c.fecha, 'YYYY-MM-DD') AS fecha,
             p.nombre AS proveedor_nombre
      FROM compras c
      LEFT JOIN proveedores p ON p.id = c.proveedor_id
@@ -37,6 +39,7 @@ export const getAllCompras = async ({ estado, proveedor_id, fecha_inicio, fecha_
 export const getCompraById = async (id) => {
   const { rows } = await pool.query(
     `SELECT c.*,
+            TO_CHAR(c.fecha, 'YYYY-MM-DD') AS fecha,
             p.nombre AS proveedor_nombre
      FROM compras c
      LEFT JOIN proveedores p ON p.id = c.proveedor_id
@@ -63,14 +66,12 @@ export const createCompra = async ({ proveedor_id, fecha, metodo_pago, estado = 
   try {
     await client.query("BEGIN");
 
-    // Calcular subtotal y total desde el detalle
     let subtotal = 0;
     for (const item of detalle) {
       subtotal += item.cantidad * item.precio_unitario;
     }
-    const total = subtotal; // ajustar si hay impuestos/descuentos
+    const total = subtotal;
 
-    // Generar folio automático: COMP-YYYYMM-XXXX
     const { rows: folioRows } = await client.query(
       `SELECT COUNT(*) FROM compras
        WHERE DATE_TRUNC('month', fecha) = DATE_TRUNC('month', CURRENT_DATE)`
@@ -88,7 +89,6 @@ export const createCompra = async ({ proveedor_id, fecha, metodo_pago, estado = 
 
     const compra = rows[0];
 
-    // Insertar detalle
     for (const item of detalle) {
       const itemSubtotal = item.cantidad * item.precio_unitario;
       await client.query(
@@ -97,28 +97,23 @@ export const createCompra = async ({ proveedor_id, fecha, metodo_pago, estado = 
         [compra.id, item.producto_id, item.cantidad, item.precio_unitario, itemSubtotal]
       );
 
-      // Actualizar stock si la compra se recibe de inmediato
       if (estado === "recibida") {
-        // Obtener stock anterior
         const { rows: stockRows } = await client.query(
           `SELECT stock_actual FROM productos WHERE id = $1`, [item.producto_id]
         );
         const stockAnterior = stockRows[0]?.stock_actual || 0;
         const stockNuevo = stockAnterior + item.cantidad;
 
-        // Actualizar stock
         await client.query(
           `UPDATE productos SET stock_actual = stock_actual + $1 WHERE id = $2`,
           [item.cantidad, item.producto_id]
         );
 
-        // ← Registrar movimiento
         await client.query(
           `INSERT INTO movimientos_inventario
-     (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-     VALUES ($1, 'entrada', $2, $3, $4, $5, NOW())`,
-          [item.producto_id, item.cantidad, stockAnterior, stockNuevo,
-          `Compra ${folio}`]
+           (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
+           VALUES ($1, 'entrada', $2, $3, $4, $5, NOW())`,
+          [item.producto_id, item.cantidad, stockAnterior, stockNuevo, `Compra ${folio}`]
         );
       }
     }
@@ -138,16 +133,17 @@ export const updateCompra = async (id, { proveedor_id, fecha, metodo_pago, estad
   try {
     await client.query("BEGIN");
 
-    // Si el estado cambia a "recibida", actualizar stock
-    const { rows: prevRows } = await client.query(`SELECT estado FROM compras WHERE id = $1`, [id]);
+    const { rows: prevRows } = await client.query(
+      `SELECT estado, folio FROM compras WHERE id = $1`, [id]
+    );
     if (!prevRows[0]) throw new Error("Compra no encontrada");
     const estadoAnterior = prevRows[0].estado;
+    const folio = prevRows[0].folio;
 
     let subtotal = 0;
     let total = 0;
 
     if (detalle && detalle.length > 0) {
-      // Eliminar detalle anterior
       await client.query(`DELETE FROM compra_detalle WHERE compra_id = $1`, [id]);
 
       for (const item of detalle) {
@@ -162,25 +158,28 @@ export const updateCompra = async (id, { proveedor_id, fecha, metodo_pago, estad
       total = subtotal;
     }
 
+    // BUG 2 CORREGIDO: "CASE WHEN $6 > 0" lanzaba error de tipos cuando subtotal/total = 0
+    // Se usa NULLIF + cast ::numeric para que Postgres resuelva el tipo correctamente
     const { rows } = await client.query(
       `UPDATE compras SET
-         proveedor_id  = COALESCE($1, proveedor_id),
-         fecha         = COALESCE($2, fecha),
-         metodo_pago   = COALESCE($3, metodo_pago),
-         estado        = COALESCE($4, estado),
-         notas         = COALESCE($5, notas),
-         subtotal      = CASE WHEN $6 > 0 THEN $6 ELSE subtotal END,
-         total         = CASE WHEN $7 > 0 THEN $7 ELSE total END
+         proveedor_id = COALESCE($1, proveedor_id),
+         fecha        = COALESCE($2, fecha),
+         metodo_pago  = COALESCE($3, metodo_pago),
+         estado       = COALESCE($4, estado),
+         notas        = COALESCE($5, notas),
+         subtotal     = CASE WHEN NULLIF($6::numeric, 0) IS NOT NULL THEN $6 ELSE subtotal END,
+         total        = CASE WHEN NULLIF($7::numeric, 0) IS NOT NULL THEN $7 ELSE total END
        WHERE id = $8
        RETURNING *`,
-      [proveedor_id, fecha, metodo_pago, estado, notas, subtotal, total, id]
+      [proveedor_id ?? null, fecha ?? null, metodo_pago ?? null, estado ?? null, notas ?? null, subtotal, total, id]
     );
 
-    // Actualizar stock si la compra pasa a "recibida"
+    // Actualizar stock al pasar de pendiente → recibida
     if (estado === "recibida" && estadoAnterior !== "recibida") {
       const { rows: detalleRows } = await client.query(
         `SELECT producto_id, cantidad FROM compra_detalle WHERE compra_id = $1`, [id]
       );
+
       for (const item of detalleRows) {
         const { rows: stockRows } = await client.query(
           `SELECT stock_actual FROM productos WHERE id = $1`, [item.producto_id]
@@ -193,13 +192,12 @@ export const updateCompra = async (id, { proveedor_id, fecha, metodo_pago, estad
           [item.cantidad, item.producto_id]
         );
 
-        // ← Registrar movimiento
+        // BUG 3 CORREGIDO: el INSERT tenía $6 en el SQL pero solo 5 parámetros en el array
         await client.query(
           `INSERT INTO movimientos_inventario
-       (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-       VALUES ($1, 'entrada', $2, $3, $4, $6, NOW())`,
-          [item.producto_id, item.cantidad, stockAnterior, stockNuevo,
-            `Compra recibida`]
+           (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
+           VALUES ($1, 'entrada', $2, $3, $4, $5, NOW())`,
+          [item.producto_id, item.cantidad, stockAnterior, stockNuevo, `Compra recibida ${folio}`]
         );
       }
     }
@@ -235,12 +233,12 @@ export const deleteCompra = async (id) => {
 export const getEstadisticasCompras = async () => {
   const { rows } = await pool.query(`
     SELECT
-      COUNT(*)                                        AS total_compras,
-      COALESCE(SUM(total), 0)                        AS monto_total,
-      COALESCE(SUM(CASE WHEN estado='pendiente'  THEN 1 ELSE 0 END), 0) AS pendientes,
-      COALESCE(SUM(CASE WHEN estado='recibida'   THEN 1 ELSE 0 END), 0) AS recibidas,
-      COALESCE(SUM(CASE WHEN estado='cancelada'  THEN 1 ELSE 0 END), 0) AS canceladas,
-      COALESCE(SUM(CASE WHEN fecha >= DATE_TRUNC('month', CURRENT_DATE) THEN total ELSE 0 END), 0) AS total_mes_actual
+      COUNT(*)                                                                                       AS total_compras,
+      COALESCE(SUM(total), 0)                                                                        AS monto_total,
+      COALESCE(SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END), 0)                            AS pendientes,
+      COALESCE(SUM(CASE WHEN estado = 'recibida'  THEN 1 ELSE 0 END), 0)                            AS recibidas,
+      COALESCE(SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END), 0)                            AS canceladas,
+      COALESCE(SUM(CASE WHEN fecha >= DATE_TRUNC('month', CURRENT_DATE) THEN total ELSE 0 END), 0)  AS total_mes_actual
     FROM compras
   `);
   return rows[0];

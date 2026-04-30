@@ -4,6 +4,7 @@ import api from "../services/api";
 import {
   Package, Plus, Search, Edit2, Trash2,
   AlertTriangle, ArrowUp, ArrowDown, RefreshCw, X,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 const Toast = ({ msg, type }) => (
@@ -40,6 +41,64 @@ const ConfirmModal = ({ nombre, onConfirm, onCancel }) => (
   </div>
 );
 
+// ── Paginación reutilizable ───────────────────────────────────────────────────
+const Paginacion = ({ paginaActual, totalPaginas, total, porPagina, onChange }) => {
+  if (totalPaginas <= 1) return null;
+  const inicio = (paginaActual - 1) * porPagina + 1;
+  const fin = Math.min(paginaActual * porPagina, total);
+
+  const delta = 2;
+  const left = Math.max(1, paginaActual - delta);
+  const right = Math.min(totalPaginas, paginaActual + delta);
+  const paginas = Array.from({ length: right - left + 1 }, (_, i) => left + i);
+
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 text-sm text-gray-500">
+      <span className="hidden sm:block text-xs">
+        {inicio}–{fin} de {total}
+      </span>
+      <div className="flex items-center gap-1 mx-auto sm:mx-0">
+        <button onClick={() => onChange(Math.max(1, paginaActual - 1))} disabled={paginaActual === 1}
+          className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+
+        {left > 1 && (
+          <>
+            <button onClick={() => onChange(1)} className="w-8 h-8 rounded-lg text-xs hover:bg-gray-100 transition-colors">1</button>
+            {left > 2 && <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>}
+          </>
+        )}
+
+        {paginas.map((n) => (
+          <button key={n} onClick={() => onChange(n)}
+            className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+              paginaActual === n ? "bg-blue-600 text-white" : "hover:bg-gray-100 text-gray-700"
+            }`}>
+            {n}
+          </button>
+        ))}
+
+        {right < totalPaginas && (
+          <>
+            {right < totalPaginas - 1 && <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>}
+            <button onClick={() => onChange(totalPaginas)} className="w-8 h-8 rounded-lg text-xs hover:bg-gray-100 transition-colors">{totalPaginas}</button>
+          </>
+        )}
+
+        <button onClick={() => onChange(Math.min(totalPaginas, paginaActual + 1))} disabled={paginaActual === totalPaginas}
+          className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition-colors">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── Constantes ────────────────────────────────────────────────────────────────
+const PROD_POR_PAG = 10;
+const MOV_POR_PAG = 10;
+
 const EMPTY_PROD = {
   nombre: "", tipo: "garrafon_lleno", descripcion: "",
   precio_venta: 0, precio_costo: 0, stock_actual: 0,
@@ -60,6 +119,7 @@ const TIPO_COLORS = {
   otro: "bg-gray-100 text-gray-600",
 };
 
+// ── Componente principal ──────────────────────────────────────────────────────
 const Inventario = () => {
   const [productos, setProductos] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
@@ -67,10 +127,16 @@ const Inventario = () => {
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
 
-  // ── Filtros movimientos ──
+  // Paginación productos
+  const [pagProd, setPagProd] = useState(1);
+
+  // Filtros movimientos
   const [filtroMovProducto, setFiltroMovProducto] = useState("");
   const [filtroMovTipo, setFiltroMovTipo] = useState("todos");
   const [filtroMovFecha, setFiltroMovFecha] = useState("");
+
+  // Paginación movimientos
+  const [pagMov, setPagMov] = useState(1);
 
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY_PROD);
@@ -104,7 +170,8 @@ const Inventario = () => {
     }
   };
 
-  const filtered = productos
+  // ── Productos filtrados y paginados ──────────────────────────────────────
+  const prodFiltrados = productos
     .filter((p) => p.nombre.toLowerCase().includes(search.toLowerCase()))
     .filter((p) => {
       if (filtroEstado === "activos") return p.activo;
@@ -112,15 +179,32 @@ const Inventario = () => {
       return true;
     });
 
-  // ── Movimientos filtrados ──
-  const movimientosFiltrados = movimientos.filter((m) => {
+  const totalPagProd = Math.ceil(prodFiltrados.length / PROD_POR_PAG);
+  const prodPaginados = prodFiltrados.slice(
+    (pagProd - 1) * PROD_POR_PAG,
+    pagProd * PROD_POR_PAG
+  );
+
+  // Reset página al cambiar filtros productos
+  useEffect(() => { setPagProd(1); }, [search, filtroEstado]);
+
+  // ── Movimientos filtrados y paginados ────────────────────────────────────
+  const movFiltrados = movimientos.filter((m) => {
     const matchProducto = !filtroMovProducto ||
       m.producto_nombre?.toLowerCase().includes(filtroMovProducto.toLowerCase());
     const matchTipo = filtroMovTipo === "todos" || m.tipo_movimiento === filtroMovTipo;
-    const matchFecha = !filtroMovFecha ||
-      (m.fecha && m.fecha.startsWith(filtroMovFecha));
+    const matchFecha = !filtroMovFecha || (m.fecha && m.fecha.startsWith(filtroMovFecha));
     return matchProducto && matchTipo && matchFecha;
   });
+
+  const totalPagMov = Math.ceil(movFiltrados.length / MOV_POR_PAG);
+  const movPaginados = movFiltrados.slice(
+    (pagMov - 1) * MOV_POR_PAG,
+    pagMov * MOV_POR_PAG
+  );
+
+  // Reset página al cambiar filtros movimientos
+  useEffect(() => { setPagMov(1); }, [filtroMovProducto, filtroMovTipo, filtroMovFecha]);
 
   const alertas = productos.filter(
     (p) => p.stock_actual <= p.stock_minimo && p.activo !== false
@@ -289,7 +373,6 @@ const Inventario = () => {
         {/* FILTROS MOVIMIENTOS */}
         {tab === "movimientos" && (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex flex-wrap gap-3 items-center">
-            {/* Buscar por producto */}
             <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
               <input
@@ -299,157 +382,161 @@ const Inventario = () => {
                 onChange={(e) => setFiltroMovProducto(e.target.value)}
               />
             </div>
-
-            {/* Filtro tipo */}
-            <select
-              value={filtroMovTipo}
-              onChange={(e) => setFiltroMovTipo(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            <select value={filtroMovTipo} onChange={(e) => setFiltroMovTipo(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-500">
               <option value="todos">Todos los tipos</option>
               <option value="entrada">↑ Entradas</option>
               <option value="salida">↓ Salidas</option>
             </select>
-
-            {/* Filtro fecha */}
-            <input
-              type="date"
-              value={filtroMovFecha}
+            <input type="date" value={filtroMovFecha}
               onChange={(e) => setFiltroMovFecha(e.target.value)}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-500"
             />
-
-            {/* Limpiar filtros */}
             {hayFiltrosMov && (
-              <button
-                onClick={limpiarFiltrosMov}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition"
-              >
+              <button onClick={limpiarFiltrosMov}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 transition">
                 <X size={13} /> Limpiar
               </button>
             )}
-
             <span className="text-xs text-gray-400 ml-auto">
-              {movimientosFiltrados.length} de {movimientos.length} movimientos
+              {movFiltrados.length} de {movimientos.length} movimientos
             </span>
           </div>
         )}
 
         {/* TABLA PRODUCTOS */}
         {tab === "productos" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Producto</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Mínimo</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
-                  <th className="p-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">No se encontraron productos</td></tr>
-                )}
-                {filtered.map((p) => (
-                  <tr key={p.id} className={`border-t border-gray-50 hover:bg-gray-50/70 transition ${!p.activo ? "opacity-50" : ""}`}>
-                    <td className="p-4">
-                      <div className="font-semibold text-gray-800">{p.nombre}</div>
-                      {p.descripcion && <div className="text-xs text-gray-400 mt-0.5">{p.descripcion}</div>}
-                    </td>
-                    <td className="text-center p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${TIPO_COLORS[p.tipo] || "bg-gray-100 text-gray-600"}`}>
-                        {TIPO_LABELS[p.tipo]}
-                      </span>
-                    </td>
-                    <td className="text-center p-4 font-semibold text-emerald-600">Q {Number(p.precio_venta).toFixed(2)}</td>
-                    <td className="text-center p-4">
-                      <span className={`font-bold text-base ${p.stock_actual <= p.stock_minimo ? "text-red-500" : "text-gray-700"}`}>
-                        {p.stock_actual}
-                      </span>
-                    </td>
-                    <td className="text-center p-4 text-gray-400 text-sm">{p.stock_minimo}</td>
-                    <td className="text-center p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium
-                        ${p.activo ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-100 text-gray-500 border border-gray-200"}`}>
-                        {p.activo ? "Activo" : "Inactivo"}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-2 justify-end items-center">
-                        {!p.activo ? (
-                          <button onClick={() => handleActivar(p.id)}
-                            className="text-xs text-emerald-600 font-medium hover:underline px-2">
-                            Reactivar
-                          </button>
-                        ) : (
-                          <button onClick={() => { setForm(p); setEditId(p.id); setModal(true); }}
-                            className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500 transition">
-                            <Edit2 size={15} />
-                          </button>
-                        )}
-                        <button onClick={() => handleDelete(p.id, p.nombre)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition">
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Producto</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Mínimo</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
+                    <th className="p-4"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {prodPaginados.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">No se encontraron productos</td></tr>
+                  )}
+                  {prodPaginados.map((p) => (
+                    <tr key={p.id} className={`border-t border-gray-50 hover:bg-gray-50/70 transition ${!p.activo ? "opacity-50" : ""}`}>
+                      <td className="p-4">
+                        <div className="font-semibold text-gray-800">{p.nombre}</div>
+                        {p.descripcion && <div className="text-xs text-gray-400 mt-0.5">{p.descripcion}</div>}
+                      </td>
+                      <td className="text-center p-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${TIPO_COLORS[p.tipo] || "bg-gray-100 text-gray-600"}`}>
+                          {TIPO_LABELS[p.tipo]}
+                        </span>
+                      </td>
+                      <td className="text-center p-4 font-semibold text-emerald-600">Q {Number(p.precio_venta).toFixed(2)}</td>
+                      <td className="text-center p-4">
+                        <span className={`font-bold text-base ${p.stock_actual <= p.stock_minimo ? "text-red-500" : "text-gray-700"}`}>
+                          {p.stock_actual}
+                        </span>
+                      </td>
+                      <td className="text-center p-4 text-gray-400 text-sm">{p.stock_minimo}</td>
+                      <td className="text-center p-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium
+                          ${p.activo ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-100 text-gray-500 border border-gray-200"}`}>
+                          {p.activo ? "Activo" : "Inactivo"}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2 justify-end items-center">
+                          {!p.activo ? (
+                            <button onClick={() => handleActivar(p.id)}
+                              className="text-xs text-emerald-600 font-medium hover:underline px-2">
+                              Reactivar
+                            </button>
+                          ) : (
+                            <button onClick={() => { setForm(p); setEditId(p.id); setModal(true); }}
+                              className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500 transition">
+                              <Edit2 size={15} />
+                            </button>
+                          )}
+                          <button onClick={() => handleDelete(p.id, p.nombre)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paginacion
+              paginaActual={pagProd}
+              totalPaginas={totalPagProd}
+              total={prodFiltrados.length}
+              porPagina={PROD_POR_PAG}
+              onChange={setPagProd}
+            />
           </div>
         )}
 
         {/* TABLA MOVIMIENTOS */}
         {tab === "movimientos" && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Fecha</th>
-                  <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Producto</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Cantidad</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Anterior</th>
-                  <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Nuevo</th>
-                  <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Motivo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimientosFiltrados.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
-                      {hayFiltrosMov ? "No hay movimientos con esos filtros" : "No hay movimientos registrados"}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Fecha</th>
+                    <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Producto</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Cantidad</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Anterior</th>
+                    <th className="p-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock Nuevo</th>
+                    <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Motivo</th>
                   </tr>
-                )}
-                {movimientosFiltrados.map((m) => (
-                  <tr key={m.id} className="border-t border-gray-50 hover:bg-gray-50/70 transition">
-                    <td className="p-4 text-xs text-gray-400 whitespace-nowrap">{formatFecha(m.fecha)}</td>
-                    <td className="p-4 font-medium text-gray-700">{m.producto_nombre}</td>
-                    <td className="text-center p-4">
-                      {m.tipo_movimiento === "entrada" ? (
-                        <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1">
-                          <ArrowUp size={12} /> Entrada
-                        </span>
-                      ) : (
-                        <span className="bg-red-50 border border-red-200 text-red-600 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1">
-                          <ArrowDown size={12} /> Salida
-                        </span>
-                      )}
-                    </td>
-                    <td className="text-center p-4 font-bold text-gray-700">{m.cantidad}</td>
-                    <td className="text-center p-4 text-gray-400">{m.stock_anterior ?? "—"}</td>
-                    <td className="text-center p-4 text-gray-600 font-medium">{m.stock_nuevo}</td>
-                    <td className="p-4 text-xs text-gray-400 max-w-[160px] truncate">{m.motivo || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {movPaginados.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
+                        {hayFiltrosMov ? "No hay movimientos con esos filtros" : "No hay movimientos registrados"}
+                      </td>
+                    </tr>
+                  )}
+                  {movPaginados.map((m) => (
+                    <tr key={m.id} className="border-t border-gray-50 hover:bg-gray-50/70 transition">
+                      <td className="p-4 text-xs text-gray-400 whitespace-nowrap">{formatFecha(m.fecha)}</td>
+                      <td className="p-4 font-medium text-gray-700">{m.producto_nombre}</td>
+                      <td className="text-center p-4">
+                        {m.tipo_movimiento === "entrada" ? (
+                          <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1">
+                            <ArrowUp size={12} /> Entrada
+                          </span>
+                        ) : (
+                          <span className="bg-red-50 border border-red-200 text-red-600 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1">
+                            <ArrowDown size={12} /> Salida
+                          </span>
+                        )}
+                      </td>
+                      <td className="text-center p-4 font-bold text-gray-700">{m.cantidad}</td>
+                      <td className="text-center p-4 text-gray-400">{m.stock_anterior ?? "—"}</td>
+                      <td className="text-center p-4 text-gray-600 font-medium">{m.stock_nuevo}</td>
+                      <td className="p-4 text-xs text-gray-400 max-w-[160px] truncate">{m.motivo || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paginacion
+              paginaActual={pagMov}
+              totalPaginas={totalPagMov}
+              total={movFiltrados.length}
+              porPagina={MOV_POR_PAG}
+              onChange={setPagMov}
+            />
           </div>
         )}
       </div>

@@ -1,0 +1,1 @@
+arreglar la busqueda por fecha en inventario
