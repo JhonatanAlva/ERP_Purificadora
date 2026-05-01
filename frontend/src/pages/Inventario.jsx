@@ -72,9 +72,8 @@ const Paginacion = ({ paginaActual, totalPaginas, total, porPagina, onChange }) 
 
         {paginas.map((n) => (
           <button key={n} onClick={() => onChange(n)}
-            className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
-              paginaActual === n ? "bg-blue-600 text-white" : "hover:bg-gray-100 text-gray-700"
-            }`}>
+            className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${paginaActual === n ? "bg-blue-600 text-white" : "hover:bg-gray-100 text-gray-700"
+              }`}>
             {n}
           </button>
         ))}
@@ -97,7 +96,15 @@ const Paginacion = ({ paginaActual, totalPaginas, total, porPagina, onChange }) 
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const PROD_POR_PAG = 10;
-const MOV_POR_PAG = 10;
+const MOV_POR_PAG  = 10;
+
+const fechaLocalStr = (fechaStr) => {
+  if (!fechaStr) return "";
+  const d = new Date(fechaStr);
+  if (isNaN(d)) return fechaStr;
+  return d.toLocaleDateString("en-CA"); // produce YYYY-MM-DD en hora local
+};
+
 
 const EMPTY_PROD = {
   nombre: "", tipo: "garrafon_lleno", descripcion: "",
@@ -193,7 +200,7 @@ const Inventario = () => {
     const matchProducto = !filtroMovProducto ||
       m.producto_nombre?.toLowerCase().includes(filtroMovProducto.toLowerCase());
     const matchTipo = filtroMovTipo === "todos" || m.tipo_movimiento === filtroMovTipo;
-    const matchFecha = !filtroMovFecha || (m.fecha && m.fecha.startsWith(filtroMovFecha));
+    const matchFecha = !filtroMovFecha || fechaLocalStr(m.fecha) === filtroMovFecha;
     return matchProducto && matchTipo && matchFecha;
   });
 
