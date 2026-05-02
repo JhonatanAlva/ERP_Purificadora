@@ -10,6 +10,7 @@ import comprasRoutes from "./routes/compras.routes.js";
 import repartoRoutes from "./routes/reparto.routes.js";
 import creditosRoutes from "./routes/creditos.routes.js";
 import reportesRoutes from "./routes/reportes.routes.js";
+import usuariosRoutes from "./routes/usuarios.routes.js";
 
 const app = express();
 
@@ -35,5 +36,6 @@ app.use("/api/compras", comprasRoutes);
 app.use("/api/reparto", repartoRoutes);
 app.use("/api/creditos", creditosRoutes);
 app.use("/api/reportes", reportesRoutes);
+app.use("/api/usuarios", usuariosRoutes);
 
 export default app;

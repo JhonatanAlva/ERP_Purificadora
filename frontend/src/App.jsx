@@ -1,117 +1,144 @@
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Clientes from "./pages/Clientes";
+import Login      from "./pages/Login";
+import Dashboard  from "./pages/Dashboard";
+import Clientes   from "./pages/Clientes";
 import Inventario from "./pages/Inventario";
-import Ventas from "./pages/Ventas";
-import Pedidos from "./pages/Pedidos";
-import Compras from "./pages/Compras";
+import Ventas     from "./pages/Ventas";
+import Pedidos    from "./pages/Pedidos";
+import Compras    from "./pages/Compras";
 import Proveedores from "./pages/Proveedores";
-import Creditos from "./pages/Creditos";
-import Reparto from "./pages/Reparto";
-import Reportes from "./pages/Reportes";
-import Usuarios from "./pages/Usuarios";
+import Creditos   from "./pages/Creditos";
+import Reparto    from "./pages/Reparto";
+import Reportes   from "./pages/Reportes";
+import Usuarios   from "./pages/Usuarios";
 import ProtectedRoute from "./components/ProtectedRoute";
+
+// ─── Permisos por página ──────────────────────────────────────────────────────
+const PERMISOS = {
+  "/dashboard":   [],
+  "/clientes":    [],
+  "/ventas":      [],
+  "/pedidos":     [],
+  "/reparto":     [],
+  "/inventario":  ["superadmin", "admin"],
+  "/compras":     ["superadmin", "admin"],
+  "/proveedores": ["superadmin", "admin"],
+  "/creditos":    ["superadmin", "admin"],
+  "/reportes":    ["superadmin", "admin"],
+  "/usuarios":    ["superadmin"],
+};
 
 function App() {
   return (
     <HashRouter>
       <Routes>
-        {/* Login */}
+
+        {/* Pública */}
         <Route path="/" element={<Login />} />
 
-        {/* Rutas protegidas */}
+        {/* Protegidas */}
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute rolesPermitidos={PERMISOS["/dashboard"]}>
               <Dashboard />
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/clientes"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute rolesPermitidos={PERMISOS["/clientes"]}>
               <Clientes />
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/inventario"
-          element={
-            <ProtectedRoute>
-              <Inventario />
-            </ProtectedRoute>
-          }
-        />
+
         <Route
           path="/ventas"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute rolesPermitidos={PERMISOS["/ventas"]}>
               <Ventas />
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/pedidos"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute rolesPermitidos={PERMISOS["/pedidos"]}>
               <Pedidos />
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/compras"
-          element={
-            <ProtectedRoute>
-              <Compras />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/proveedores"
-          element={
-            <ProtectedRoute>
-              <Proveedores />
-            </ProtectedRoute>
-          }
-        />
-          <Route
-          path="/creditos"
-          element={
-            <ProtectedRoute>
-              <Creditos />
-            </ProtectedRoute>
-          }
-        />
+
         <Route
           path="/reparto"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute rolesPermitidos={PERMISOS["/reparto"]}>
               <Reparto />
             </ProtectedRoute>
           }
         />
+
+        <Route
+          path="/inventario"
+          element={
+            <ProtectedRoute rolesPermitidos={PERMISOS["/inventario"]}>
+              <Inventario />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/compras"
+          element={
+            <ProtectedRoute rolesPermitidos={PERMISOS["/compras"]}>
+              <Compras />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/proveedores"
+          element={
+            <ProtectedRoute rolesPermitidos={PERMISOS["/proveedores"]}>
+              <Proveedores />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/creditos"
+          element={
+            <ProtectedRoute rolesPermitidos={PERMISOS["/creditos"]}>
+              <Creditos />
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="/reportes"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute rolesPermitidos={PERMISOS["/reportes"]}>
               <Reportes />
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/usuarios"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute rolesPermitidos={PERMISOS["/usuarios"]}>
               <Usuarios />
             </ProtectedRoute>
           }
         />
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to="/dashboard" />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
       </Routes>
     </HashRouter>
   );
