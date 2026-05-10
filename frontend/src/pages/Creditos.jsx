@@ -72,7 +72,6 @@ const Creditos = () => {
   const LIMIT = 15;
 
   // Modales
-  const [modalNuevo,   setModalNuevo]   = useState(false);
   const [modalDetalle, setModalDetalle] = useState(null);
   const [modalAbono,   setModalAbono]   = useState(null);
 
@@ -122,28 +121,6 @@ const Creditos = () => {
     const q = search.toLowerCase();
     return c.cliente_nombre?.toLowerCase().includes(q);
   });
-
-  // ── Crear crédito ────────────────────────────────────────────────────────
-
-  const handleCrear = async () => {
-    if (!formNuevo.cliente_id || !formNuevo.monto_total) return;
-    setSaving(true);
-    setError("");
-    try {
-      await api.post("/creditos", {
-        cliente_id:  formNuevo.cliente_id,
-        monto_total: parseFloat(formNuevo.monto_total),
-        venta_id:    formNuevo.venta_id || undefined,
-      });
-      setModalNuevo(false);
-      setFormNuevo({ cliente_id: "", monto_total: "", venta_id: "" });
-      await Promise.all([cargarCreditos(), cargarCatalogos()]);
-    } catch (e) {
-      setError(e.response?.data?.message || "Error al crear crédito.");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // ── Registrar abono ──────────────────────────────────────────────────────
 
@@ -204,12 +181,6 @@ const Creditos = () => {
             </h1>
             <p className="text-sm text-gray-500">{total} créditos registrados</p>
           </div>
-          <button
-            onClick={() => { setModalNuevo(true); setError(""); }}
-            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Nuevo Crédito
-          </button>
         </div>
 
         {/* Estadísticas */}
@@ -384,73 +355,6 @@ const Creditos = () => {
           )}
         </div>
       </div>
-
-      {/* ══ Modal Nuevo Crédito ═════════════════════════════════════════════ */}
-      {modalNuevo && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
-
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-500" /> Nuevo Crédito
-              </h3>
-              <button onClick={() => setModalNuevo(false)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                <select
-                  value={formNuevo.cliente_id}
-                  onChange={(e) => setFormNuevo({ ...formNuevo, cliente_id: e.target.value })}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                >
-                  <option value="">Seleccionar cliente...</option>
-                  {clientes.map((cl) => (
-                    <option key={cl.id} value={cl.id}>{cl.nombre}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Monto del crédito *</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">Q</span>
-                  <input
-                    type="number" min="0.01" step="0.01"
-                    value={formNuevo.monto_total}
-                    onChange={(e) => setFormNuevo({ ...formNuevo, monto_total: e.target.value })}
-                    placeholder="0.00"
-                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                  />
-                </div>
-              </div>
-
-              {error && (
-                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" /> {error}
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => setModalNuevo(false)}
-                className="flex-1 border border-gray-200 text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                Cancelar
-              </button>
-              <button
-                onClick={handleCrear}
-                disabled={saving || !formNuevo.cliente_id || !formNuevo.monto_total}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</> : "Crear Crédito"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ══ Modal Registrar Abono ═══════════════════════════════════════════ */}
       {modalAbono && (

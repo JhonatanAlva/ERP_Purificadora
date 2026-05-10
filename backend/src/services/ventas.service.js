@@ -97,16 +97,16 @@ export const crearVenta = async (data) => {
        RETURNING *`,
       [
         folio,
-        cliente_id  || null,
+        cliente_id || null,
         fechaVenta,
-        Number(subtotal)  || 0,
+        Number(subtotal) || 0,
         Number(descuento) || 0,
-        Number(total)     || 0,
+        Number(total) || 0,
         metodo_pago,
         tipo_venta,
         estado,
         ruta_id || null,
-        notas   || ""
+        notas || ""
       ]
     );
 
@@ -125,7 +125,7 @@ export const crearVenta = async (data) => {
         throw new Error(`Producto no encontrado (id: ${item.producto_id})`);
       }
 
-      const producto      = prodRes.rows[0];
+      const producto = prodRes.rows[0];
       const stockAnterior = producto.stock_actual;
 
       if (stockAnterior < item.cantidad) {
@@ -167,7 +167,7 @@ export const crearVenta = async (data) => {
       );
     }
 
-    
+
 
     // =========================
     // CRÉDITO (SI APLICA)
@@ -197,27 +197,44 @@ export const crearVenta = async (data) => {
 // CANCELAR VENTA
 // =========================
 export const cancelarVenta = async (id) => {
+
   const client = await pool.connect();
 
   try {
+
     await client.query("BEGIN");
 
+    // =========================================
+    // OBTENER VENTA
+    // =========================================
     const ventaRes = await client.query(
       "SELECT * FROM ventas WHERE id = $1 FOR UPDATE",
       [id]
     );
 
-    if (ventaRes.rows.length === 0) throw new Error("Venta no encontrada");
+    if (ventaRes.rows.length === 0) {
+      throw new Error("Venta no encontrada");
+    }
 
     const venta = ventaRes.rows[0];
-    if (venta.estado === "cancelada") throw new Error("La venta ya está cancelada");
 
+    if (venta.estado === "cancelada") {
+      throw new Error("La venta ya está cancelada");
+    }
+
+    // =========================================
+    // OBTENER DETALLE
+    // =========================================
     const itemsRes = await client.query(
       "SELECT * FROM venta_detalle WHERE venta_id = $1",
       [id]
     );
 
+    // =========================================
+    // RESTAURAR STOCK
+    // =========================================
     for (const item of itemsRes.rows) {
+
       const prodRes = await client.query(
         "SELECT * FROM productos WHERE id = $1 FOR UPDATE",
         [item.producto_id]
@@ -225,38 +242,95 @@ export const cancelarVenta = async (id) => {
 
       if (prodRes.rows.length === 0) continue;
 
-      const stockAnterior = prodRes.rows[0].stock_actual;
+      const producto = prodRes.rows[0];
+
+      const stockAnterior =
+        producto.stock_actual;
 
       const updateRes = await client.query(
         `UPDATE productos
          SET stock_actual = stock_actual + $1
          WHERE id = $2
          RETURNING stock_actual`,
-        [item.cantidad, item.producto_id]
+        [
+          item.cantidad,
+          item.producto_id
+        ]
       );
 
-      const nuevoStock = updateRes.rows[0].stock_actual;
+      const nuevoStock =
+        updateRes.rows[0].stock_actual;
 
+      // =========================================
+      // MOVIMIENTO INVENTARIO
+      // =========================================
       await client.query(
         `INSERT INTO movimientos_inventario
-         (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-         VALUES ($1, 'entrada', $2, $3, $4, 'cancelacion_venta', NOW())`,
-        [item.producto_id, item.cantidad, stockAnterior, nuevoStock]
+        (
+          producto_id,
+          tipo_movimiento,
+          cantidad,
+          stock_anterior,
+          stock_nuevo,
+          motivo,
+          fecha
+        )
+        VALUES
+        (
+          $1,
+          'entrada',
+          $2,
+          $3,
+          $4,
+          'cancelacion_venta',
+          NOW()
+        )`,
+        [
+          item.producto_id,
+          item.cantidad,
+          stockAnterior,
+          nuevoStock
+        ]
       );
     }
 
+    // =========================================
+    // CANCELAR VENTA
+    // =========================================
     await client.query(
-      "UPDATE ventas SET estado = 'cancelada' WHERE id = $1",
+      `UPDATE ventas
+       SET estado = 'cancelada'
+       WHERE id = $1`,
       [id]
     );
 
+    // =========================================
+    // CANCELAR CRÉDITO RELACIONADO
+    // =========================================
+    await client.query(
+      `UPDATE creditos
+       SET estado = 'cancelado'
+       WHERE venta_id = $1
+       AND estado != 'pagado'`,
+      [id]
+    );
+
+    // =========================================
+    // FINALIZAR
+    // =========================================
     await client.query("COMMIT");
+
     return { ok: true };
 
   } catch (error) {
+
     await client.query("ROLLBACK");
     throw error;
+
   } finally {
+
     client.release();
+
   }
+
 };

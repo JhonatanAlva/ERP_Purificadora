@@ -140,7 +140,12 @@ const Reparto = () => {
       const detalle = existe
         ? prev.detalle.map((i) =>
           i.producto_id === prod.id
-            ? { ...i, cantidad_salida: i.cantidad_salida + 1 }
+            ? {
+              ...i, cantidad_salida:
+                i.cantidad_salida >= i.stock_actual
+                  ? i.stock_actual
+                  : i.cantidad_salida + 1
+            }
             : i
         )
         : [
@@ -163,15 +168,36 @@ const Reparto = () => {
       detalle: prev.detalle.filter((i) => i.producto_id !== producto_id),
     }));
 
-  const actualizarCantidadSalida = (producto_id, val) =>
+  const actualizarCantidadSalida = (producto_id, val) => {
+
     setFormSalida((prev) => ({
+
       ...prev,
-      detalle: prev.detalle.map((i) =>
-        i.producto_id === producto_id
-          ? { ...i, cantidad_salida: parseInt(val) || 0 }
-          : i
-      ),
+
+      detalle: prev.detalle.map((i) => {
+
+        if (i.producto_id !== producto_id) {
+          return i;
+        }
+
+        const cantidad = parseInt(val) || 0;
+
+        // Limitar al stock existente
+        const cantidadFinal = Math.min(
+          cantidad,
+          i.stock_actual
+        );
+
+        return {
+          ...i,
+          cantidad_salida: cantidadFinal
+        };
+
+      }),
+
     }));
+
+  };
 
   const totalGarrafonesSalida = formSalida.detalle.reduce(
     (s, i) => s + (i.cantidad_salida || 0), 0
@@ -220,6 +246,7 @@ const Reparto = () => {
           producto_id: item.producto_id,
           nombre: item.producto_nombre || item.nombre,
           cantidad_salida: item.cantidad_salida,
+          cantidad_vendida: 0,
           cantidad_devuelta: 0,
         })),
       });
@@ -231,11 +258,24 @@ const Reparto = () => {
   // ── Calcular efectivo esperado ───────────────────────────────────────────
 
   const calcularEfectivoEsperado = () => {
+
     return formRegreso.detalle.reduce((sum, item) => {
-      const vendidos = item.cantidad_salida - (item.cantidad_devuelta || 0);
-      const prod = productos.find((p) => p.id === item.producto_id);
-      return sum + vendidos * (parseFloat(prod?.precio_venta) || 0);
+
+      const vendidos =
+        item.cantidad_vendida || 0;
+
+      const prod = productos.find(
+        (p) => p.id === item.producto_id
+      );
+
+      return (
+        sum +
+        vendidos *
+        (parseFloat(prod?.precio_venta) || 0)
+      );
+
     }, 0);
+
   };
 
   // ── Guardar regreso ──────────────────────────────────────────────────────
@@ -249,11 +289,25 @@ const Reparto = () => {
         hora_regreso: formRegreso.hora_regreso,
         efectivo_entregado: parseFloat(formRegreso.efectivo_entregado) || 0,
         notas_regreso: formRegreso.notas_regreso,
-        detalle: formRegreso.detalle.map(({ producto_id, cantidad_salida, cantidad_devuelta }) => ({
-          producto_id,
-          cantidad_salida,
-          cantidad_devuelta: cantidad_devuelta || 0,
-        })),
+        detalle: formRegreso.detalle.map(
+          ({
+            producto_id,
+            cantidad_salida,
+            cantidad_vendida,
+            cantidad_devuelta
+          }) => ({
+
+            producto_id,
+
+            cantidad_salida,
+
+            cantidad_vendida:
+              cantidad_vendida || 0,
+
+            cantidad_devuelta:
+              cantidad_devuelta || 0,
+
+          })),
       });
       setModalRegreso(null);
       await Promise.all([cargarRutas(), cargarCatalogos()]);
@@ -674,46 +728,146 @@ const Reparto = () => {
                 </div>
               </div>
 
-              {/* Devoluciones por producto */}
+              {/* Control de productos */}
               <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">Cantidad devuelta por producto</p>
+
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  Control de productos
+                </p>
+
                 <div className="border border-gray-100 rounded-xl overflow-hidden">
+
                   <table className="w-full text-sm">
+
                     <thead className="bg-gray-50">
+
                       <tr>
-                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Producto</th>
-                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Salida</th>
-                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Devuelto</th>
-                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Vendido</th>
+
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">
+                          Producto
+                        </th>
+
+                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">
+                          Salida
+                        </th>
+
+                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">
+                          Vendido
+                        </th>
+
+                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">
+                          Devuelto
+                        </th>
+
+                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">
+                          Dif.
+                        </th>
+
                       </tr>
+
                     </thead>
+
                     <tbody className="divide-y divide-gray-50">
+
                       {formRegreso.detalle.map((item, idx) => {
-                        const vendido = item.cantidad_salida - (item.cantidad_devuelta || 0);
+
+                        const diferencia =
+                          item.cantidad_salida -
+                          (item.cantidad_vendida || 0) -
+                          (item.cantidad_devuelta || 0);
+
                         return (
+
                           <tr key={item.producto_id}>
-                            <td className="px-3 py-2 font-medium text-gray-700">{item.nombre}</td>
-                            <td className="px-3 py-2 text-center text-gray-500">{item.cantidad_salida}</td>
+
+                            <td className="px-3 py-2 font-medium text-gray-700">
+                              {item.nombre}
+                            </td>
+
+                            <td className="px-3 py-2 text-center text-gray-500">
+                              {item.cantidad_salida}
+                            </td>
+
+                            {/* VENDIDO */}
                             <td className="px-3 py-2 text-center">
-                              <input type="number" min="0" max={item.cantidad_salida}
-                                value={item.cantidad_devuelta}
+
+                              <input
+                                type="number"
+                                min="0"
+                                max={item.cantidad_salida}
+                                value={item.cantidad_vendida}
                                 onChange={(e) => {
+
                                   const nuevos = [...formRegreso.detalle];
-                                  nuevos[idx] = { ...item, cantidad_devuelta: parseInt(e.target.value) || 0 };
-                                  setFormRegreso({ ...formRegreso, detalle: nuevos });
+
+                                  nuevos[idx] = {
+                                    ...item,
+                                    cantidad_vendida:
+                                      parseInt(e.target.value) || 0
+                                  };
+
+                                  setFormRegreso({
+                                    ...formRegreso,
+                                    detalle: nuevos
+                                  });
+
                                 }}
                                 className="w-20 text-center border border-gray-200 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-sky-300"
                               />
+
                             </td>
-                            <td className={`px-3 py-2 text-center font-semibold ${vendido > 0 ? "text-emerald-600" : "text-gray-400"}`}>
-                              {vendido}
+
+                            {/* DEVUELTO */}
+                            <td className="px-3 py-2 text-center">
+
+                              <input
+                                type="number"
+                                min="0"
+                                max={item.cantidad_salida}
+                                value={item.cantidad_devuelta}
+                                onChange={(e) => {
+
+                                  const nuevos = [...formRegreso.detalle];
+
+                                  nuevos[idx] = {
+                                    ...item,
+                                    cantidad_devuelta:
+                                      parseInt(e.target.value) || 0
+                                  };
+
+                                  setFormRegreso({
+                                    ...formRegreso,
+                                    detalle: nuevos
+                                  });
+
+                                }}
+                                className="w-20 text-center border border-gray-200 rounded px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-sky-300"
+                              />
+
                             </td>
+
+                            {/* DIFERENCIA */}
+                            <td
+                              className={`px-3 py-2 text-center font-bold ${diferencia === 0
+                                ? "text-emerald-600"
+                                : "text-red-600"
+                                }`}
+                            >
+                              {diferencia}
+                            </td>
+
                           </tr>
+
                         );
+
                       })}
+
                     </tbody>
+
                   </table>
+
                 </div>
+
               </div>
 
               {/* Control de efectivo */}

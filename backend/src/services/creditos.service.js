@@ -152,13 +152,84 @@ export const registrarAbono = async (credito_id, { monto }) => {
 };
 
 export const cancelarCredito = async (id) => {
-    const { rows } = await pool.query(
-        `UPDATE creditos SET estado = 'cancelado' WHERE id = $1 AND estado = 'pendiente'
-     RETURNING *`,
-        [id]
-    );
-    if (!rows[0]) throw new Error("No se puede cancelar: crédito no encontrado o ya cerrado");
-    return rows[0];
+
+    const client = await pool.connect();
+
+    try {
+
+        await client.query("BEGIN");
+
+        // =========================================
+        // OBTENER CRÉDITO
+        // =========================================
+        const { rows } = await client.query(
+            `SELECT *
+             FROM creditos
+             WHERE id = $1
+             FOR UPDATE`,
+            [id]
+        );
+
+        if (!rows[0]) {
+            throw new Error(
+                "Crédito no encontrado"
+            );
+        }
+
+        const credito = rows[0];
+
+        if (credito.estado === "pagado") {
+            throw new Error(
+                "No se puede cancelar un crédito pagado"
+            );
+        }
+
+        if (credito.estado === "cancelado") {
+            throw new Error(
+                "El crédito ya está cancelado"
+            );
+        }
+
+        // =========================================
+        // CANCELAR CRÉDITO
+        // =========================================
+        const creditoRes = await client.query(
+            `UPDATE creditos
+             SET estado = 'cancelado'
+             WHERE id = $1
+             RETURNING *`,
+            [id]
+        );
+
+        // =========================================
+        // CANCELAR VENTA RELACIONADA
+        // =========================================
+        if (credito.venta_id) {
+
+            await client.query(
+                `UPDATE ventas
+                 SET estado = 'cancelada'
+                 WHERE id = $1`,
+                [credito.venta_id]
+            );
+
+        }
+
+        await client.query("COMMIT");
+
+        return creditoRes.rows[0];
+
+    } catch (error) {
+
+        await client.query("ROLLBACK");
+        throw error;
+
+    } finally {
+
+        client.release();
+
+    }
+
 };
 
 // ─── ESTADÍSTICAS ────────────────────────────────────────────────────────────

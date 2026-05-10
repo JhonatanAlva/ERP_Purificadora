@@ -175,93 +175,331 @@ export const actualizarPedido = async (id, data) => {
 };
 
 // =============================
-// CAMBIAR ESTADO — lógica de stock
+// CAMBIAR ESTADO — lógica de stock + ventas
 // =============================
 export const cambiarEstadoPedido = async (id, nuevoEstado) => {
+
   const client = await pool.connect();
 
   try {
+
     await client.query("BEGIN");
 
-    // Obtener estado actual del pedido
+    // =========================================
+    // OBTENER PEDIDO
+    // =========================================
     const pedidoRes = await client.query(
-      "SELECT * FROM pedidos WHERE id = $1", [id]
+      "SELECT * FROM pedidos WHERE id = $1",
+      [id]
     );
-    if (pedidoRes.rows.length === 0) throw new Error("Pedido no encontrado");
 
-    const estadoActual = pedidoRes.rows[0].estado?.trim().toLowerCase();
-    const estadoNuevo = nuevoEstado?.trim().toLowerCase();
+    if (pedidoRes.rows.length === 0) {
+      throw new Error("Pedido no encontrado");
+    }
 
-    // Obtener items del pedido
+    const pedido = pedidoRes.rows[0];
+
+    const estadoActual =
+      pedido.estado?.trim().toLowerCase();
+
+    const estadoNuevo =
+      nuevoEstado?.trim().toLowerCase();
+
+    // =========================================
+    // OBTENER ITEMS
+    // =========================================
     const itemsRes = await client.query(
-      "SELECT * FROM pedido_detalle WHERE pedido_id = $1", [id]
+      "SELECT * FROM pedido_detalle WHERE pedido_id = $1",
+      [id]
     );
+
     const items = itemsRes.rows;
 
-    // CASO 1: pendiente/en_proceso → entregado = DESCONTAR STOCK
-    if (estadoNuevo === "entregado" && estadoActual !== "entregado") {
+    // =========================================
+    // CASO 1:
+    // pendiente/en_proceso → entregado
+    // DESCONTAR STOCK
+    // =========================================
+    if (
+      estadoNuevo === "entregado" &&
+      estadoActual !== "entregado"
+    ) {
+
       for (const item of items) {
+
         const prodRes = await client.query(
-          "SELECT * FROM productos WHERE id = $1", [item.producto_id]
+          "SELECT * FROM productos WHERE id = $1",
+          [item.producto_id]
         );
+
         if (prodRes.rows.length === 0) continue;
+
         const producto = prodRes.rows[0];
 
         if (producto.stock_actual < item.cantidad) {
-          throw new Error(`Stock insuficiente para "${producto.nombre}". Disponible: ${producto.stock_actual}`);
+          throw new Error(
+            `Stock insuficiente para "${producto.nombre}". Disponible: ${producto.stock_actual}`
+          );
         }
 
-        const nuevoStock = producto.stock_actual - item.cantidad;
+        const nuevoStock =
+          producto.stock_actual - item.cantidad;
 
         await client.query(
-          "UPDATE productos SET stock_actual = $1 WHERE id = $2",
-          [nuevoStock, item.producto_id]
+          `UPDATE productos
+           SET stock_actual = $1
+           WHERE id = $2`,
+          [
+            nuevoStock,
+            item.producto_id
+          ]
         );
 
-        await client.query(`
-          INSERT INTO movimientos_inventario
-          (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-          VALUES ($1,'salida',$2,$3,$4,'pedido_entregado',NOW())
-        `, [item.producto_id, item.cantidad, producto.stock_actual, nuevoStock]);
+        await client.query(
+          `INSERT INTO movimientos_inventario
+          (
+            producto_id,
+            tipo_movimiento,
+            cantidad,
+            stock_anterior,
+            stock_nuevo,
+            motivo,
+            fecha
+          )
+          VALUES
+          (
+            $1,
+            'salida',
+            $2,
+            $3,
+            $4,
+            'pedido_entregado',
+            NOW()
+          )`,
+          [
+            item.producto_id,
+            item.cantidad,
+            producto.stock_actual,
+            nuevoStock
+          ]
+        );
       }
     }
 
-    // CASO 2: entregado → cancelado = RESTAURAR STOCK
-    if (estadoNuevo === "cancelado" && estadoActual === "entregado") {
+    // =========================================
+    // CASO 2:
+    // entregado → cancelado
+    // RESTAURAR STOCK
+    // =========================================
+    if (
+      estadoNuevo === "cancelado" &&
+      estadoActual === "entregado"
+    ) {
+
       for (const item of items) {
+
         const prodRes = await client.query(
-          "SELECT * FROM productos WHERE id = $1", [item.producto_id]
+          "SELECT * FROM productos WHERE id = $1",
+          [item.producto_id]
         );
+
         if (prodRes.rows.length === 0) continue;
+
         const producto = prodRes.rows[0];
-        const nuevoStock = producto.stock_actual + item.cantidad;
+
+        const nuevoStock =
+          producto.stock_actual + item.cantidad;
 
         await client.query(
-          "UPDATE productos SET stock_actual = $1 WHERE id = $2",
-          [nuevoStock, item.producto_id]
+          `UPDATE productos
+           SET stock_actual = $1
+           WHERE id = $2`,
+          [
+            nuevoStock,
+            item.producto_id
+          ]
         );
 
-        await client.query(`
-          INSERT INTO movimientos_inventario
-          (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-          VALUES ($1,'entrada',$2,$3,$4,'cancelacion_pedido',NOW())
-        `, [item.producto_id, item.cantidad, producto.stock_actual, nuevoStock]);
+        await client.query(
+          `INSERT INTO movimientos_inventario
+          (
+            producto_id,
+            tipo_movimiento,
+            cantidad,
+            stock_anterior,
+            stock_nuevo,
+            motivo,
+            fecha
+          )
+          VALUES
+          (
+            $1,
+            'entrada',
+            $2,
+            $3,
+            $4,
+            'cancelacion_pedido',
+            NOW()
+          )`,
+          [
+            item.producto_id,
+            item.cantidad,
+            producto.stock_actual,
+            nuevoStock
+          ]
+        );
       }
     }
 
-    // Actualizar estado
-    const result = await client.query(`
-      UPDATE pedidos SET estado = $1 WHERE id = $2 RETURNING *
-    `, [nuevoEstado, id]);
+    // =========================================
+    // ACTUALIZAR ESTADO
+    // =========================================
+    const result = await client.query(
+      `UPDATE pedidos
+       SET estado = $1
+       WHERE id = $2
+       RETURNING *`,
+      [
+        nuevoEstado,
+        id
+      ]
+    );
 
+    // =========================================
+    // CREAR VENTA AUTOMÁTICA
+    // SOLO SI SE ENTREGÓ
+    // =========================================
+    if (
+      estadoNuevo === "entregado" &&
+      estadoActual !== "entregado"
+    ) {
+
+      const itemsVenta = [];
+      let subtotalVenta = 0;
+
+      for (const item of items) {
+
+        const prodRes = await client.query(
+          `SELECT nombre, precio_venta
+           FROM productos
+           WHERE id = $1`,
+          [item.producto_id]
+        );
+
+        if (prodRes.rows.length === 0) continue;
+
+        const producto = prodRes.rows[0];
+
+        const precio =
+          parseFloat(producto.precio_venta || 0);
+
+        const subtotal =
+          precio * item.cantidad;
+
+        subtotalVenta += subtotal;
+
+        itemsVenta.push({
+          producto_id: item.producto_id,
+          cantidad: item.cantidad,
+          precio,
+          subtotal
+        });
+      }
+
+      // =========================================
+      // CREAR VENTA
+      // =========================================
+      const folioVenta =
+        `VP-${Date.now()}`;
+
+      const ventaRes = await client.query(
+        `INSERT INTO ventas
+        (
+          folio,
+          cliente_id,
+          fecha,
+          subtotal,
+          descuento,
+          total,
+          metodo_pago,
+          tipo_venta,
+          estado,
+          notas
+        )
+        VALUES
+        (
+          $1,
+          $2,
+          CURRENT_DATE,
+          $3,
+          0,
+          $4,
+          'efectivo',
+          'pedido',
+          'pagada',
+          $5
+        )
+        RETURNING *`,
+        [
+          folioVenta,
+          pedido.cliente_id || null,
+          subtotalVenta,
+          subtotalVenta,
+          `Venta generada automáticamente desde pedido ${pedido.folio}`
+        ]
+      );
+
+      const venta = ventaRes.rows[0];
+
+      // =========================================
+      // INSERTAR DETALLE VENTA
+      // =========================================
+      for (const item of itemsVenta) {
+
+        await client.query(
+          `INSERT INTO venta_detalle
+          (
+            venta_id,
+            producto_id,
+            cantidad,
+            precio_unitario,
+            subtotal
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5
+          )`,
+          [
+            venta.id,
+            item.producto_id,
+            item.cantidad,
+            item.precio,
+            item.subtotal
+          ]
+        );
+      }
+    }
+
+    // =========================================
+    // FINALIZAR
+    // =========================================
     await client.query("COMMIT");
+
     return result.rows[0];
 
   } catch (error) {
+
     await client.query("ROLLBACK");
     throw error;
+
   } finally {
+
     client.release();
+
   }
 };
 
