@@ -141,86 +141,322 @@ export const createRuta = async ({
 };
 
 export const cerrarRuta = async (id, {
-    hora_regreso, efectivo_entregado, notas_regreso, detalle
+    hora_regreso,
+    efectivo_entregado,
+    notas_regreso,
+    detalle
 }) => {
+
     const client = await pool.connect();
+
     try {
+
         await client.query("BEGIN");
 
         const { rows: rutaRows } = await client.query(
-            `SELECT * FROM rutas WHERE id = $1`, [id]
+            `SELECT * FROM rutas WHERE id = $1`,
+            [id]
         );
-        if (!rutaRows[0]) throw new Error("Ruta no encontrada");
+
+        if (!rutaRows[0]) {
+            throw new Error("Ruta no encontrada");
+        }
+
         const ruta = rutaRows[0];
-        if (ruta.estado === "cerrada") throw new Error("La ruta ya fue cerrada");
+
+        if (ruta.estado === "cerrada") {
+            throw new Error("La ruta ya fue cerrada");
+        }
 
         let efectivo_esperado = 0;
         let diferencia_garrafones = 0;
 
+        // =========================================
+        // RECORRER PRODUCTOS DE LA RUTA
+        // =========================================
         for (const item of detalle) {
-            const cantidad_devuelta = item.cantidad_devuelta || 0;
-            const cantidad_vendida = item.cantidad_salida - cantidad_devuelta;
 
+            const cantidad_salida =
+                item.cantidad_salida || 0;
+
+            const cantidad_vendida =
+                item.cantidad_vendida || 0;
+
+            const cantidad_devuelta =
+                item.cantidad_devuelta || 0;
+
+            // Diferencia real
+            const diferencia_item =
+                cantidad_salida -
+                cantidad_vendida -
+                cantidad_devuelta;
+
+            // Actualizar detalle de ruta
             await client.query(
                 `UPDATE ruta_detalle
-                 SET cantidad_vendida  = $1,
+                 SET cantidad_vendida = $1,
                      cantidad_devuelta = $2
-                 WHERE ruta_id = $3 AND producto_id = $4`,
-                [cantidad_vendida, cantidad_devuelta, id, item.producto_id]
+                 WHERE ruta_id = $3
+                 AND producto_id = $4`,
+                [
+                    cantidad_vendida,
+                    cantidad_devuelta,
+                    id,
+                    item.producto_id
+                ]
             );
 
+            // =========================================
+            // DEVOLVER STOCK SI REGRESÓ PRODUCTO
+            // =========================================
             if (cantidad_devuelta > 0) {
+
                 const { rows: stockRows } = await client.query(
-                    `SELECT stock_actual FROM productos WHERE id = $1`, [item.producto_id]
+                    `SELECT stock_actual
+                     FROM productos
+                     WHERE id = $1`,
+                    [item.producto_id]
                 );
-                const stockAnterior = stockRows[0]?.stock_actual || 0;
-                const stockNuevo = stockAnterior + cantidad_devuelta;
+
+                const stockAnterior =
+                    stockRows[0]?.stock_actual || 0;
+
+                const stockNuevo =
+                    stockAnterior + cantidad_devuelta;
 
                 await client.query(
-                    `UPDATE productos SET stock_actual = stock_actual + $1 WHERE id = $2`,
-                    [cantidad_devuelta, item.producto_id]
+                    `UPDATE productos
+                     SET stock_actual = stock_actual + $1
+                     WHERE id = $2`,
+                    [
+                        cantidad_devuelta,
+                        item.producto_id
+                    ]
                 );
 
                 await client.query(
                     `INSERT INTO movimientos_inventario
-                     (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
-                     VALUES ($1, 'entrada', $2, $3, $4, $5, NOW())`,
-                    [item.producto_id, cantidad_devuelta, stockAnterior, stockNuevo,
-                    `Devolución ruta ${ruta.folio}`]
+                    (
+                        producto_id,
+                        tipo_movimiento,
+                        cantidad,
+                        stock_anterior,
+                        stock_nuevo,
+                        motivo,
+                        fecha
+                    )
+                    VALUES
+                    (
+                        $1,
+                        'entrada',
+                        $2,
+                        $3,
+                        $4,
+                        $5,
+                        NOW()
+                    )`,
+                    [
+                        item.producto_id,
+                        cantidad_devuelta,
+                        stockAnterior,
+                        stockNuevo,
+                        `Devolución ruta ${ruta.folio}`
+                    ]
                 );
             }
 
+            // =========================================
+            // OBTENER PRECIO PRODUCTO
+            // =========================================
             const { rows: prodRows } = await client.query(
-                `SELECT precio_venta FROM productos WHERE id = $1`, [item.producto_id]
+                `SELECT precio_venta
+                 FROM productos
+                 WHERE id = $1`,
+                [item.producto_id]
             );
-            efectivo_esperado += (prodRows[0]?.precio_venta || 0) * cantidad_vendida;
-            diferencia_garrafones += cantidad_devuelta;
+
+            const precioVenta =
+                parseFloat(prodRows[0]?.precio_venta) || 0;
+
+            // Efectivo esperado
+            efectivo_esperado +=
+                precioVenta * cantidad_vendida;
+
+            // Diferencia total
+            diferencia_garrafones += diferencia_item;
         }
 
-        const diferencia_efectivo = parseFloat(efectivo_entregado || 0) - efectivo_esperado;
+        // =========================================
+        // DIFERENCIA EFECTIVO
+        // =========================================
+        const diferencia_efectivo =
+            parseFloat(efectivo_entregado || 0) -
+            efectivo_esperado;
 
+        // =========================================
+        // CERRAR RUTA
+        // =========================================
         const { rows } = await client.query(
-            `UPDATE rutas SET
-               hora_regreso          = $1,
-               efectivo_esperado     = $2,
-               efectivo_entregado    = $3,
-               diferencia_efectivo   = $4,
-               diferencia_garrafones = $5,
-               notas_regreso         = $6,
-               estado                = 'cerrada'
+            `UPDATE rutas
+             SET
+                hora_regreso = $1,
+                efectivo_esperado = $2,
+                efectivo_entregado = $3,
+                diferencia_efectivo = $4,
+                diferencia_garrafones = $5,
+                notas_regreso = $6,
+                estado = 'cerrada'
              WHERE id = $7
              RETURNING *`,
-            [hora_regreso, efectivo_esperado, efectivo_entregado,
-                diferencia_efectivo, diferencia_garrafones, notas_regreso, id]
+            [
+                hora_regreso,
+                efectivo_esperado,
+                efectivo_entregado,
+                diferencia_efectivo,
+                diferencia_garrafones,
+                notas_regreso,
+                id
+            ]
         );
 
+        // =========================================
+        // CREAR VENTA AUTOMÁTICA DE RUTA
+        // =========================================
+
+        const itemsVenta = [];
+
+        for (const item of detalle) {
+
+            const cantidadVendida =
+                item.cantidad_vendida || 0;
+
+            // Solo agregar si vendió
+            if (cantidadVendida <= 0) continue;
+
+            const { rows: prodRows } = await client.query(
+                `SELECT nombre, precio_venta
+                 FROM productos
+                 WHERE id = $1`,
+                [item.producto_id]
+            );
+
+            const producto = prodRows[0];
+
+            if (!producto) continue;
+
+            itemsVenta.push({
+                producto_id: item.producto_id,
+                cantidad: cantidadVendida,
+                precio: parseFloat(producto.precio_venta || 0),
+                subtotal:
+                    cantidadVendida *
+                    parseFloat(producto.precio_venta || 0)
+            });
+        }
+
+        // =========================================
+        // INSERTAR VENTA SOLO SI HUBO VENTAS
+        // =========================================
+        if (itemsVenta.length > 0) {
+
+            const subtotalVenta =
+                itemsVenta.reduce(
+                    (acc, item) => acc + item.subtotal,
+                    0
+                );
+
+            const folioVenta =
+                `VR-${Date.now()}`;
+
+            // Crear venta
+            const ventaRes = await client.query(
+                `INSERT INTO ventas
+                (
+                    folio,
+                    cliente_id,
+                    fecha,
+                    subtotal,
+                    descuento,
+                    total,
+                    metodo_pago,
+                    tipo_venta,
+                    estado,
+                    ruta_id,
+                    notas
+                )
+                VALUES
+                (
+                    $1,
+                    NULL,
+                    CURRENT_DATE,
+                    $2,
+                    0,
+                    $3,
+                    'efectivo',
+                    'ruta',
+                    'pagada',
+                    $4,
+                    $5
+                )
+                RETURNING *`,
+                [
+                    folioVenta,
+                    subtotalVenta,
+                    subtotalVenta,
+                    id,
+                    `Venta automática generada desde ruta ${ruta.folio}`
+                ]
+            );
+
+            const venta = ventaRes.rows[0];
+
+            // Insertar detalle venta
+            for (const item of itemsVenta) {
+
+                await client.query(
+                    `INSERT INTO venta_detalle
+                    (
+                        venta_id,
+                        producto_id,
+                        cantidad,
+                        precio_unitario,
+                        subtotal
+                    )
+                    VALUES
+                    (
+                        $1,
+                        $2,
+                        $3,
+                        $4,
+                        $5
+                    )`,
+                    [
+                        venta.id,
+                        item.producto_id,
+                        item.cantidad,
+                        item.precio,
+                        item.subtotal
+                    ]
+                );
+            }
+        }
+
+        // =========================================
+        // FINALIZAR
+        // =========================================
         await client.query("COMMIT");
+
         return rows[0];
+
     } catch (err) {
+
         await client.query("ROLLBACK");
         throw err;
+
     } finally {
+
         client.release();
+
     }
 };
 
