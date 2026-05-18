@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import logo from "../assets/logo.png";
+import { useAuth } from "../context/useAuth";
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,13 +19,9 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const res = await api.post("/auth/login", {
-        email,
-        password,
-      });
+      const res = await api.post("/auth/login", { email, password });
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      login(res.data.user);
 
       navigate("/dashboard");
     } catch (err) {
@@ -39,15 +37,12 @@ const Login = () => {
         onSubmit={handleLogin}
         className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm"
       >
-        {/* LOGO */}
         <div className="flex flex-col items-center mb-6">
           <img src={logo} alt="Logo" className="w-20 mb-3" />
           <h2 className="text-xl font-semibold text-gray-800">
             Purificadora El Glaciar
           </h2>
-          <p className="text-sm text-gray-400">
-            Sistema de Gestión
-          </p>
+          <p className="text-sm text-gray-400">Sistema de Gestión</p>
         </div>
 
         {error && (
@@ -80,7 +75,6 @@ const Login = () => {
           {loading ? "Ingresando..." : "Iniciar Sesión"}
         </button>
 
-        {/* Footer */}
         <p className="text-xs text-gray-400 text-center mt-4">
           © 2026 Purificadora El Glaciar
         </p>

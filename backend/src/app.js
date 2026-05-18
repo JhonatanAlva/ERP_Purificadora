@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import cookieParser from "cookie-parser";
 
 import authRoutes from "./routes/auth.routes.js";
 import clientesRoutes from "./routes/clientes.routes.js";
@@ -14,6 +15,7 @@ import repartoRoutes from "./routes/reparto.routes.js";
 import creditosRoutes from "./routes/creditos.routes.js";
 import reportesRoutes from "./routes/reportes.routes.js";
 import usuariosRoutes from "./routes/usuarios.routes.js";
+
 
 const app = express();
 
@@ -71,6 +73,9 @@ app.use(express.urlencoded({ extended: true, limit: "500kb" }));
 app.get("/api/health", (req, res) => {
   res.json({ message: "API funcionando correctamente" });
 });
+
+// ─── Cookie parser para manejar tokens en cookies httpOnly ─────────────────
+app.use(cookieParser());
 
 // ─── Rutas ────────────────────────────────────────────────────────────────────
 app.use("/api/auth", limitadorLogin, authRoutes);   // rate limit más estricto en login
