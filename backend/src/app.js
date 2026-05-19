@@ -16,13 +16,10 @@ import creditosRoutes from "./routes/creditos.routes.js";
 import reportesRoutes from "./routes/reportes.routes.js";
 import usuariosRoutes from "./routes/usuarios.routes.js";
 
-
 const app = express();
 
-// ─── FIX 4: Helmet — oculta headers que revelan tecnología ───────────────────
 app.use(helmet());
 
-// ─── FIX 3: CORS restringido a orígenes permitidos ───────────────────────────
 const origenesPermitidos = (process.env.CORS_ORIGINS || "http://localhost:5174")
   .split(",")
   .map((o) => o.trim());
@@ -30,7 +27,6 @@ const origenesPermitidos = (process.env.CORS_ORIGINS || "http://localhost:5174")
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Permitir requests sin origin (Postman, apps móviles, mismo servidor)
       if (!origin || origenesPermitidos.includes(origin)) {
         callback(null, true);
       } else {
@@ -43,60 +39,43 @@ app.use(
   })
 );
 
-// ─── FIX 5: Rate limiting global — protección básica contra flood ─────────────
-// 200 requests por IP cada 15 minutos para rutas generales
+// Rate limit general — excluye /auth/me para no bloquear verificaciones
 const limitadorGeneral = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === "/api/auth/me", // /auth/me no cuenta para el límite
   message: { ok: false, message: "Demasiadas peticiones. Intenta en 15 minutos." },
-});
-
-// 10 intentos de login por IP cada 15 minutos — antifuerza bruta
-const limitadorLogin = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { ok: false, message: "Demasiados intentos de login. Intenta en 15 minutos." },
 });
 
 app.use(limitadorGeneral);
 
-// ─── Body parser ──────────────────────────────────────────────────────────────
-// Limitar tamaño del body para evitar ataques de payload grande
 app.use(express.json({ limit: "500kb" }));
 app.use(express.urlencoded({ extended: true, limit: "500kb" }));
+app.use(cookieParser());
 
-// ─── Health check (sin autenticación) ────────────────────────────────────────
 app.get("/api/health", (req, res) => {
   res.json({ message: "API funcionando correctamente" });
 });
 
-// ─── Cookie parser para manejar tokens en cookies httpOnly ─────────────────
-app.use(cookieParser());
-
 // ─── Rutas ────────────────────────────────────────────────────────────────────
-app.use("/api/auth", limitadorLogin, authRoutes);   // rate limit más estricto en login
-app.use("/api/clientes", clientesRoutes);
-app.use("/api/inventario", inventarioRoutes);
-app.use("/api/ventas", ventasRoutes);
-app.use("/api/pedidos", pedidosRoutes);
+app.use("/api/auth",        authRoutes);        // limitadorLogin ya está dentro
+app.use("/api/clientes",    clientesRoutes);
+app.use("/api/inventario",  inventarioRoutes);
+app.use("/api/ventas",      ventasRoutes);
+app.use("/api/pedidos",     pedidosRoutes);
 app.use("/api/proveedores", proveedoresRoutes);
-app.use("/api/compras", comprasRoutes);
-app.use("/api/reparto", repartoRoutes);
-app.use("/api/creditos", creditosRoutes);
-app.use("/api/reportes", reportesRoutes);
-app.use("/api/usuarios", usuariosRoutes);
+app.use("/api/compras",     comprasRoutes);
+app.use("/api/reparto",     repartoRoutes);
+app.use("/api/creditos",    creditosRoutes);
+app.use("/api/reportes",    reportesRoutes);
+app.use("/api/usuarios",    usuariosRoutes);
 
-// ─── Handler global de errores (última línea antes de export) ─────────────────
 app.use((err, req, res, next) => {
-  // Error de CORS
   if (err.message?.startsWith("CORS:")) {
     return res.status(403).json({ ok: false, message: err.message });
   }
-  // Cualquier otro error no capturado
   console.error("[ERROR GLOBAL]", err.message);
   res.status(500).json({ ok: false, message: "Error interno del servidor" });
 });
