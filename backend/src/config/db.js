@@ -16,3 +16,10 @@ export const pool = new Pool({
 pool.connect()
   .then(() => console.log("PostgreSQL conectado"))
   .catch(err => console.error("Error conexión DB:", err));
+
+// Sin este handler, un error en un cliente inactivo del pool (ej. Postgres
+// se reinicia o cierra la conexión) es un evento 'error' no manejado y
+// tumba TODO el proceso de Node (Node vuelve a lanzarlo como excepción).
+pool.on("error", (err) => {
+  console.error("Error inesperado en cliente inactivo del pool:", err.message);
+});

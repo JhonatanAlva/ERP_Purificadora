@@ -18,3 +18,12 @@ export const verificarToken = (req, res, next) => {
     return res.status(401).json({ ok: false, message: "Sesión expirada" });
   }
 };
+
+// Requiere rol admin o superadmin — para operaciones destructivas/reversiones
+// (eliminar, cancelar, cerrar) que no deben quedar en manos de cualquier usuario.
+export const requireAdmin = (req, res, next) => {
+  if (!["admin", "superadmin"].includes(req.user?.rol)) {
+    return res.status(403).json({ ok: false, message: "Acción no permitida para tu rol" });
+  }
+  next();
+};

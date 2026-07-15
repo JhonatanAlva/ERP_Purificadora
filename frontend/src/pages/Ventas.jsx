@@ -1,6 +1,7 @@
 import Layout from "../components/Layout";
 import { useState, useEffect } from "react";
 import api from "../services/api";
+import { useAuth } from "../context/useAuth";
 import {
   ShoppingCart,
   Plus,
@@ -46,6 +47,9 @@ const EMPTY_FORM = {
 };
 
 const Ventas = () => {
+  const { user } = useAuth();
+  const esAdmin = ["admin", "superadmin"].includes(user?.rol);
+
   const [ventas, setVentas] = useState([]);
   const [productos, setProductos] = useState([]);
   const [clientes, setClientes] = useState([]);
@@ -879,8 +883,8 @@ const Ventas = () => {
                   </p>
                 )}
 
-                {/* Botón cancelar venta */}
-                {detailModal.estado !== "cancelada" && (
+                {/* Botón cancelar venta (solo admin/superadmin) */}
+                {detailModal.estado !== "cancelada" && esAdmin && (
                   <button
                     onClick={() => setConfirmCancelar(detailModal.id)}
                     className="w-full border border-red-200 text-red-500 rounded-xl py-2.5 text-sm font-medium hover:bg-red-50 transition mt-2"

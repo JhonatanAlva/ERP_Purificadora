@@ -2,6 +2,7 @@ import Layout from "../components/Layout";
 import { useState, useEffect, useCallback } from "react";
 import { Users, Plus, Trash2, X, Pencil, Search, Phone, MapPin, Package, CheckCircle, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../services/api";
+import { useAuth } from "../context/useAuth";
 
 const TIPO_COLORS = {
   mayorista: "bg-purple-100 text-purple-700",
@@ -12,6 +13,9 @@ const TIPO_COLORS = {
 const LIMIT = 10;
 
 export default function Clientes() {
+  const { user } = useAuth();
+  const esAdmin = ["admin", "superadmin"].includes(user?.rol);
+
   const [clientes, setClientes] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -249,8 +253,12 @@ export default function Clientes() {
                       <td className="px-5 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <div
-                            onClick={() => c.activo ? setConfirmDelete(c.id) : activarCliente(c.id)}
-                            className={`w-9 h-5 flex items-center rounded-full cursor-pointer transition-colors ${c.activo ? "bg-emerald-400" : "bg-gray-300"}`}
+                            onClick={() => {
+                              if (c.activo) { if (esAdmin) setConfirmDelete(c.id); }
+                              else activarCliente(c.id);
+                            }}
+                            title={!esAdmin && c.activo ? "Solo un admin puede desactivar clientes" : undefined}
+                            className={`w-9 h-5 flex items-center rounded-full transition-colors ${c.activo ? "bg-emerald-400" : "bg-gray-300"} ${!esAdmin && c.activo ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                           >
                             <div className={`bg-white w-3.5 h-3.5 rounded-full shadow transform transition-transform ${c.activo ? "translate-x-4" : "translate-x-0.5"}`} />
                           </div>
@@ -258,10 +266,12 @@ export default function Clientes() {
                             className="p-1.5 rounded-lg hover:bg-sky-50 text-sky-500 transition-colors" title="Editar">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button onClick={() => setConfirmDelete(c.id)}
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors" title="Desactivar">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {esAdmin && (
+                            <button onClick={() => setConfirmDelete(c.id)}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors" title="Desactivar">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

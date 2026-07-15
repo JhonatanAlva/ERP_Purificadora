@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Layout from "../components/Layout";
 import api from "../services/api";
+import { useAuth } from "../context/useAuth";
 import {
   Truck,
   Plus,
@@ -59,6 +60,9 @@ const toArray = (payload) => {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 const Reparto = () => {
+  const { user } = useAuth();
+  const esAdmin = ["admin", "superadmin"].includes(user?.rol);
+
   const [rutas, setRutas] = useState([]);
   const [productos, setProductos] = useState([]);
   const [stats, setStats] = useState(null);
@@ -548,7 +552,7 @@ const Reparto = () => {
                     >
                       <Eye className="w-3.5 h-3.5" /> Ver Detalle
                     </button>
-                    {r.estado === "en_ruta" && (
+                    {r.estado === "en_ruta" && esAdmin && (
                       <button
                         onClick={() => abrirRegreso(r)}
                         className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-emerald-600 text-white hover:bg-emerald-700 py-1.5 rounded-lg transition-colors font-medium"

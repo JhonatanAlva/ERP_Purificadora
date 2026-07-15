@@ -1,6 +1,7 @@
 import Layout from "../components/Layout";
 import { useEffect, useState, useCallback } from "react";
 import api from "../services/api";
+import { useAuth } from "../context/useAuth";
 import {
   ClipboardList,
   Plus,
@@ -95,6 +96,9 @@ const inputCls =
   "w-full border border-gray-200 bg-gray-50 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition";
 
 const Pedidos = () => {
+  const { user } = useAuth();
+  const esAdmin = ["admin", "superadmin"].includes(user?.rol);
+
   const [pedidos, setPedidos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -609,17 +613,19 @@ const Pedidos = () => {
                       >
                         <Edit2 size={14} />
                       </button>
-                      <button
-                        onClick={() =>
-                          setConfirmDelete({
-                            id: pedido.id,
-                            nombre: pedido.cliente_nombre,
-                          })
-                        }
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {esAdmin && (
+                        <button
+                          onClick={() =>
+                            setConfirmDelete({
+                              id: pedido.id,
+                              nombre: pedido.cliente_nombre,
+                            })
+                          }
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
