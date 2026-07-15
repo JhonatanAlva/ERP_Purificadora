@@ -56,9 +56,7 @@ export const crearVenta = async (data) => {
     const {
       cliente_id,
       items,
-      subtotal,
       descuento = 0,
-      total,
       metodo_pago,
       tipo_venta,
       estado,
@@ -74,9 +72,6 @@ export const crearVenta = async (data) => {
     if (!items || items.length === 0) {
       throw new Error("La venta debe tener al menos un producto");
     }
-    if (total < 0) {
-      throw new Error("El total no puede ser negativo");
-    }
     if (metodo_pago === "credito" && !cliente_id) {
       throw new Error("Venta a crédito requiere cliente");
     }
@@ -88,33 +83,13 @@ export const crearVenta = async (data) => {
     const fechaVenta = fecha || null;
 
     // =========================
-    // INSERTAR VENTA
+    // BLOQUEAR PRODUCTOS Y CALCULAR PRECIOS DESDE LA BASE DE DATOS
+    // El precio nunca se toma del cliente: evita que un usuario manipule
+    // el precio de venta enviando un `item.precio` distinto al catálogo.
     // =========================
-    const ventaRes = await client.query(
-      `INSERT INTO ventas 
-       (folio, cliente_id, fecha, subtotal, descuento, total, metodo_pago, tipo_venta, estado, ruta_id, notas)
-       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING *`,
-      [
-        folio,
-        cliente_id || null,
-        fechaVenta,
-        Number(subtotal) || 0,
-        Number(descuento) || 0,
-        Number(total) || 0,
-        metodo_pago,
-        tipo_venta,
-        estado,
-        ruta_id || null,
-        notas || ""
-      ]
-    );
+    const itemsConProducto = [];
+    let subtotalCalculado = 0;
 
-    const venta = ventaRes.rows[0];
-
-    // =========================
-    // DETALLE + INVENTARIO
-    // =========================
     for (const item of items) {
       const prodRes = await client.query(
         "SELECT * FROM productos WHERE id = $1 FOR UPDATE",
@@ -134,13 +109,53 @@ export const crearVenta = async (data) => {
         );
       }
 
-      const subtotalItem = item.precio * item.cantidad;
+      const precio = Number(producto.precio_venta);
+      const subtotalItem = precio * item.cantidad;
+      subtotalCalculado += subtotalItem;
 
+      itemsConProducto.push({ producto, cantidad: item.cantidad, precio, subtotalItem, stockAnterior });
+    }
+
+    const descuentoNum = Number(descuento) || 0;
+    if (descuentoNum < 0 || descuentoNum > subtotalCalculado) {
+      throw new Error("El descuento no puede ser negativo ni mayor al subtotal");
+    }
+    const totalCalculado = +(subtotalCalculado - descuentoNum).toFixed(2);
+
+    // =========================
+    // INSERTAR VENTA (con montos calculados en el servidor)
+    // =========================
+    const ventaRes = await client.query(
+      `INSERT INTO ventas
+       (folio, cliente_id, fecha, subtotal, descuento, total, metodo_pago, tipo_venta, estado, ruta_id, notas)
+       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        folio,
+        cliente_id || null,
+        fechaVenta,
+        subtotalCalculado,
+        descuentoNum,
+        totalCalculado,
+        metodo_pago,
+        tipo_venta,
+        estado,
+        ruta_id || null,
+        notas || ""
+      ]
+    );
+
+    const venta = ventaRes.rows[0];
+
+    // =========================
+    // DETALLE + INVENTARIO
+    // =========================
+    for (const { producto, cantidad, precio, subtotalItem, stockAnterior } of itemsConProducto) {
       await client.query(
         `INSERT INTO venta_detalle
          (venta_id, producto_id, cantidad, precio_unitario, subtotal)
          VALUES ($1, $2, $3, $4, $5)`,
-        [venta.id, item.producto_id, item.cantidad, item.precio, subtotalItem]
+        [venta.id, producto.id, cantidad, precio, subtotalItem]
       );
 
       const updateRes = await client.query(
@@ -148,7 +163,7 @@ export const crearVenta = async (data) => {
          SET stock_actual = stock_actual - $1
          WHERE id = $2 AND stock_actual >= $1
          RETURNING stock_actual`,
-        [item.cantidad, item.producto_id]
+        [cantidad, producto.id]
       );
 
       if (updateRes.rowCount === 0) {
@@ -163,7 +178,7 @@ export const crearVenta = async (data) => {
         `INSERT INTO movimientos_inventario
          (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha)
          VALUES ($1, 'salida', $2, $3, $4, 'venta', NOW())`,
-        [item.producto_id, item.cantidad, stockAnterior, nuevoStock]
+        [producto.id, cantidad, stockAnterior, nuevoStock]
       );
     }
 
@@ -178,7 +193,7 @@ export const crearVenta = async (data) => {
         `INSERT INTO creditos
            (venta_id, cliente_id, monto_total, saldo_actual, estado, fecha_inicio, created_at)
          VALUES ($1, $2, $3, $4, 'pendiente', COALESCE($5::date, CURRENT_DATE), NOW())`,
-        [venta.id, cliente_id, Number(total), Number(total), fechaVenta]
+        [venta.id, cliente_id, totalCalculado, totalCalculado, fechaVenta]
       );
     }
 

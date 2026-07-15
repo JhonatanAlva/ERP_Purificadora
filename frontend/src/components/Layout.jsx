@@ -8,38 +8,30 @@ import {
 } from "lucide-react";
 import logo from "../assets/logo.png";
 import { filtrarNavPorRol } from "../nav-config";
+import { useAuth } from "../context/useAuth";
 
-// Mapa de icono string → componente (para nav-config.js)
 const ICONOS = {
   LayoutDashboard, Users, Package, ShoppingCart,
   ClipboardList, Truck, BarChart3, UserCog,
   ShoppingBag, Building2, Wallet,
-  BarChart2: BarChart3, // alias
+  BarChart2: BarChart3,
 };
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate  = useNavigate();
+  const { user, logout } = useAuth();
 
   const isActive = (path) => location.pathname === path;
 
-  const user = (() => {
-    try { return JSON.parse(localStorage.getItem("user")) || null; }
-    catch { return null; }
-  })();
-
-  // Filtrar secciones de nav según el rol del usuario
   const navSecciones = filtrarNavPorRol(user?.rol || "usuario");
+  const todosLosItems = navSecciones.flatMap((s) => s.items);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await logout(); // limpia cookie en backend + borra user del contexto
     navigate("/");
   };
-
-  // Todos los items aplanados (para el título del header)
-  const todosLosItems = navSecciones.flatMap((s) => s.items);
 
   const renderSection = (section, items) => (
     <div key={section}>
@@ -68,6 +60,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
+
       {/* Overlay móvil */}
       {sidebarOpen && (
         <div
@@ -89,12 +82,15 @@ export default function Layout({ children }) {
             <p className="text-white font-bold text-sm">Purificadora El Glaciar</p>
             <p className="text-sky-400 text-xs">Sistema de Gestión</p>
           </div>
-          <button className="ml-auto lg:hidden text-white/60 hover:text-white" onClick={() => setSidebarOpen(false)}>
+          <button
+            className="ml-auto lg:hidden text-white/60 hover:text-white"
+            onClick={() => setSidebarOpen(false)}
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* NAV — filtrado por rol */}
+        {/* NAV */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
           {navSecciones.map(({ section, items }) => renderSection(section, items))}
         </nav>
@@ -131,7 +127,10 @@ export default function Layout({ children }) {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* HEADER */}
         <header className="bg-white border-b px-4 py-3 flex items-center shadow-sm">
-          <button className="lg:hidden p-2 rounded-lg hover:bg-gray-100" onClick={() => setSidebarOpen(true)}>
+          <button
+            className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
+            onClick={() => setSidebarOpen(true)}
+          >
             <Menu size={20} />
           </button>
           <h1 className="ml-3 font-semibold text-gray-800">

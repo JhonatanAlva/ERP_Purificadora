@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Layout from "../components/Layout";
 import api from "../services/api";
+import { useAuth } from "../context/useAuth";
 import {
   UserCog, Plus, Edit2, Trash2, X, Eye, EyeOff,
   Shield, Crown, User as UserIcon, Users,
@@ -8,17 +9,15 @@ import {
   AlertCircle, CheckCircle, Lock
 } from "lucide-react";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const ROL_CONFIG = {
   superadmin: { label: "Super Admin", color: "bg-purple-50 text-purple-700 ring-1 ring-purple-200", icon: Crown },
-  admin:      { label: "Admin",       color: "bg-sky-50    text-sky-700    ring-1 ring-sky-200",    icon: Shield },
-  usuario:    { label: "Usuario",     color: "bg-gray-50   text-gray-700   ring-1 ring-gray-200",   icon: UserIcon },
+  admin:      { label: "Admin",       color: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",           icon: Shield },
+  usuario:    { label: "Usuario",     color: "bg-gray-50 text-gray-700 ring-1 ring-gray-200",        icon: UserIcon },
 };
 
 const PERMISOS = {
-  superadmin: ["Todo el sistema", "Gestión de usuarios", "Reportes completos", "Configuración", "Eliminar registros"],
-  admin:      ["Ventas y clientes", "Inventario", "Compras", "Reparto", "Créditos", "Reportes"],
+  superadmin: ["Todo el sistema", "Gestion de usuarios", "Reportes completos", "Configuracion", "Eliminar registros"],
+  admin:      ["Ventas y clientes", "Inventario", "Compras", "Reparto", "Creditos", "Reportes"],
   usuario:    ["Registrar ventas", "Ver clientes", "Gestionar pedidos", "Registrar reparto"],
 };
 
@@ -34,37 +33,28 @@ const Toast = ({ msg, type, onClose }) => (
   </div>
 );
 
-// ─── Component ───────────────────────────────────────────────────────────────
-
 const Usuarios = () => {
+  const { user: yo } = useAuth();
+
   const [usuarios,  setUsuarios]  = useState([]);
   const [stats,     setStats]     = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [saving,    setSaving]    = useState(false);
   const [toast,     setToast]     = useState(null);
-
-  const [modalForm, setModalForm] = useState(false);   // crear / editar
-  const [modalPwd,  setModalPwd]  = useState(null);    // cambiar contraseña (usuario)
-  const [modalDel,  setModalDel]  = useState(null);    // confirmar eliminar
-  const [editando,  setEditando]  = useState(null);    // usuario siendo editado
-
-  const [form,    setForm]    = useState(FORM_INICIAL);
-  const [pwd,     setPwd]     = useState(PWD_INICIAL);
-  const [showPwd, setShowPwd] = useState({ p: false, n: false, c: false });
-
-  const yo = (() => {
-    try { return JSON.parse(localStorage.getItem("user") || "{}"); }
-    catch { return {}; }
-  })();
+  const [modalForm, setModalForm] = useState(false);
+  const [modalPwd,  setModalPwd]  = useState(null);
+  const [modalDel,  setModalDel]  = useState(null);
+  const [editando,  setEditando]  = useState(null);
+  const [form,      setForm]      = useState(FORM_INICIAL);
+  const [pwd,       setPwd]       = useState(PWD_INICIAL);
+  const [showPwd,   setShowPwd]   = useState({ p: false, n: false, c: false });
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ── Carga ──────────────────────────────────────────────────────────────────
-
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setLoading(true);
     try {
       const [{ data: u }, { data: s }] = await Promise.all([
@@ -78,31 +68,16 @@ const Usuarios = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => { cargar(); }, [cargar]);
 
-  // ── Crear / editar ─────────────────────────────────────────────────────────
-
-  const abrirCrear = () => {
-    setEditando(null);
-    setForm(FORM_INICIAL);
-    setModalForm(true);
-  };
-
-  const abrirEditar = (u) => {
-    setEditando(u);
-    setForm({ nombre: u.nombre, email: u.email, password: "", rol: u.rol });
-    setModalForm(true);
-  };
+  const abrirCrear = () => { setEditando(null); setForm(FORM_INICIAL); setModalForm(true); };
+  const abrirEditar = (u) => { setEditando(u); setForm({ nombre: u.nombre, email: u.email, password: "", rol: u.rol }); setModalForm(true); };
 
   const handleGuardar = async () => {
-    if (!form.nombre.trim() || !form.email.trim()) {
-      showToast("Nombre y correo son requeridos", "error"); return;
-    }
-    if (!editando && (!form.password || form.password.length < 6)) {
-      showToast("La contraseña debe tener al menos 6 caracteres", "error"); return;
-    }
+    if (!form.nombre.trim() || !form.email.trim()) { showToast("Nombre y correo son requeridos", "error"); return; }
+    if (!editando && (!form.password || form.password.length < 6)) { showToast("La contrasena debe tener al menos 6 caracteres", "error"); return; }
     setSaving(true);
     try {
       if (editando) {
@@ -121,32 +96,21 @@ const Usuarios = () => {
     }
   };
 
-  // ── Cambiar contraseña ─────────────────────────────────────────────────────
-
   const handleCambiarPwd = async () => {
-    if (!pwd.password_nuevo || pwd.password_nuevo.length < 6) {
-      showToast("La contraseña debe tener al menos 6 caracteres", "error"); return;
-    }
-    if (pwd.password_nuevo !== pwd.confirmar) {
-      showToast("Las contraseñas no coinciden", "error"); return;
-    }
+    if (!pwd.password_nuevo || pwd.password_nuevo.length < 6) { showToast("La contrasena debe tener al menos 6 caracteres", "error"); return; }
+    if (pwd.password_nuevo !== pwd.confirmar) { showToast("Las contrasenas no coinciden", "error"); return; }
     setSaving(true);
     try {
-      await api.put(`/usuarios/${modalPwd.id}/password`, {
-        password_nuevo:  pwd.password_nuevo,
-        password_actual: pwd.password_actual,
-      });
-      showToast("Contraseña actualizada");
+      await api.put(`/usuarios/${modalPwd.id}/password`, { password_nuevo: pwd.password_nuevo, password_actual: pwd.password_actual });
+      showToast("Contrasena actualizada");
       setModalPwd(null);
       setPwd(PWD_INICIAL);
     } catch (e) {
-      showToast(e.response?.data?.message || "Error al cambiar contraseña", "error");
+      showToast(e.response?.data?.message || "Error al cambiar contrasena", "error");
     } finally {
       setSaving(false);
     }
   };
-
-  // ── Toggle activo ──────────────────────────────────────────────────────────
 
   const handleToggle = async (u) => {
     try {
@@ -157,8 +121,6 @@ const Usuarios = () => {
       showToast(e.response?.data?.message || "Error", "error");
     }
   };
-
-  // ── Eliminar ───────────────────────────────────────────────────────────────
 
   const handleEliminar = async () => {
     setSaving(true);
@@ -174,15 +136,11 @@ const Usuarios = () => {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
-
   return (
     <Layout>
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
       <div className="space-y-5 p-1">
-
-        {/* Encabezado */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -190,15 +148,11 @@ const Usuarios = () => {
             </h1>
             <p className="text-sm text-gray-500">{stats?.total ?? 0} usuarios · {stats?.activos ?? 0} activos</p>
           </div>
-          <button
-            onClick={abrirCrear}
-            className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
+          <button onClick={abrirCrear} className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
             <Plus className="w-4 h-4" /> Nuevo Usuario
           </button>
         </div>
 
-        {/* Stats */}
         {stats && (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
             {[
@@ -217,7 +171,6 @@ const Usuarios = () => {
           </div>
         )}
 
-        {/* Tabla */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-gray-400 gap-2">
@@ -229,9 +182,7 @@ const Usuarios = () => {
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
                     {["Usuario", "Correo", "Rol", "Estado", "Creado", ""].map((h) => (
-                      <th key={h} className={`px-5 py-3 text-xs font-semibold text-gray-500 uppercase ${
-                        h === "Estado" || h === "" ? "text-center" : "text-left"
-                      }`}>{h}</th>
+                      <th key={h} className={`px-5 py-3 text-xs font-semibold text-gray-500 uppercase ${h === "Estado" || h === "" ? "text-center" : "text-left"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -239,7 +190,7 @@ const Usuarios = () => {
                   {usuarios.map((u) => {
                     const cfg  = ROL_CONFIG[u.rol] || ROL_CONFIG.usuario;
                     const Icon = cfg.icon;
-                    const esYo = u.id === yo.id;
+                    const esYo = u.id === yo?.id;
                     return (
                       <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${!u.activo ? "opacity-50" : ""} ${esYo ? "bg-purple-50/30" : ""}`}>
                         <td className="px-5 py-3">
@@ -249,7 +200,7 @@ const Usuarios = () => {
                             </div>
                             <div>
                               <p className="font-medium text-gray-800">{u.nombre}</p>
-                              {esYo && <p className="text-xs text-purple-600 font-medium">Tú</p>}
+                              {esYo && <p className="text-xs text-purple-600 font-medium">Tu</p>}
                             </div>
                           </div>
                         </td>
@@ -260,32 +211,23 @@ const Usuarios = () => {
                           </span>
                         </td>
                         <td className="px-5 py-3 text-center">
-                          <button
-                            onClick={() => !esYo && handleToggle(u)}
-                            disabled={esYo}
+                          <button onClick={() => !esYo && handleToggle(u)} disabled={esYo}
                             title={esYo ? "No puedes desactivarte a ti mismo" : u.activo ? "Desactivar" : "Activar"}
-                            className="disabled:cursor-not-allowed"
-                          >
-                            {u.activo
-                              ? <ToggleRight className="w-6 h-6 text-emerald-500" />
-                              : <ToggleLeft  className="w-6 h-6 text-gray-400" />
-                            }
+                            className="disabled:cursor-not-allowed">
+                            {u.activo ? <ToggleRight className="w-6 h-6 text-emerald-500" /> : <ToggleLeft className="w-6 h-6 text-gray-400" />}
                           </button>
                         </td>
                         <td className="px-5 py-3 text-gray-400 text-xs">{u.created_at}</td>
                         <td className="px-5 py-3 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => abrirEditar(u)}
-                              className="p-1.5 rounded-lg hover:bg-sky-50 text-sky-500 transition-colors" title="Editar">
+                            <button onClick={() => abrirEditar(u)} className="p-1.5 rounded-lg hover:bg-sky-50 text-sky-500 transition-colors" title="Editar">
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            <button onClick={() => { setModalPwd(u); setPwd(PWD_INICIAL); }}
-                              className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-500 transition-colors" title="Cambiar contraseña">
+                            <button onClick={() => { setModalPwd(u); setPwd(PWD_INICIAL); }} className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-500 transition-colors" title="Cambiar contrasena">
                               <KeyRound className="w-4 h-4" />
                             </button>
                             {!esYo && (
-                              <button onClick={() => setModalDel(u)}
-                                className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors" title="Eliminar">
+                              <button onClick={() => setModalDel(u)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors" title="Eliminar">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             )}
@@ -300,7 +242,6 @@ const Usuarios = () => {
           )}
         </div>
 
-        {/* Info de roles */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Shield className="w-4 h-4 text-purple-500" /> Roles del Sistema
@@ -309,11 +250,7 @@ const Usuarios = () => {
             {Object.entries(ROL_CONFIG).map(([rol, cfg]) => {
               const Icon = cfg.icon;
               return (
-                <div key={rol} className={`rounded-xl p-4 border ${
-                  rol === "superadmin" ? "border-purple-100 bg-purple-50/40" :
-                  rol === "admin"      ? "border-sky-100    bg-sky-50/40" :
-                                         "border-gray-100   bg-gray-50/40"
-                }`}>
+                <div key={rol} className={`rounded-xl p-4 border ${rol === "superadmin" ? "border-purple-100 bg-purple-50/40" : rol === "admin" ? "border-sky-100 bg-sky-50/40" : "border-gray-100 bg-gray-50/40"}`}>
                   <div className="flex items-center gap-2 mb-3">
                     <Icon className={`w-4 h-4 ${rol === "superadmin" ? "text-purple-600" : rol === "admin" ? "text-sky-600" : "text-gray-500"}`} />
                     <span className="font-semibold text-gray-800 text-sm">{cfg.label}</span>
@@ -332,7 +269,7 @@ const Usuarios = () => {
         </div>
       </div>
 
-      {/* ══ Modal Crear / Editar ════════════════════════════════════════════ */}
+      {/* Modal Crear / Editar */}
       {modalForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
@@ -345,35 +282,24 @@ const Usuarios = () => {
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-                <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                  placeholder="Nombre completo"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
-                />
+                <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre completo"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Correo *</label>
-                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="correo@ejemplo.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
-                />
+                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="correo@ejemplo.com"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
               </div>
               {!editando && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena *</label>
                   <div className="relative">
-                    <input
-                      type={showPwd.p ? "text" : "password"}
-                      value={form.password}
-                      onChange={(e) => setForm({ ...form, password: e.target.value })}
-                      placeholder="Mínimo 6 caracteres"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
-                    />
-                    <button type="button" onClick={() => setShowPwd(s => ({ ...s, p: !s.p }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <input type={showPwd.p ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimo 6 caracteres"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                    <button type="button" onClick={() => setShowPwd(s => ({ ...s, p: !s.p }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                       {showPwd.p ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
@@ -389,14 +315,9 @@ const Usuarios = () => {
                 </select>
               </div>
             </div>
-
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => setModalForm(false)}
-                className="flex-1 border border-gray-200 text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={handleGuardar} disabled={saving}
-                className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
+              <button onClick={() => setModalForm(false)} className="flex-1 border border-gray-200 text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-50 transition-colors">Cancelar</button>
+              <button onClick={handleGuardar} disabled={saving} className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
                 {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</> : editando ? "Guardar cambios" : "Crear Usuario"}
               </button>
             </div>
@@ -404,94 +325,71 @@ const Usuarios = () => {
         </div>
       )}
 
-      {/* ══ Modal Cambiar Contraseña ════════════════════════════════════════ */}
+      {/* Modal Cambiar Contrasena */}
       {modalPwd && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-amber-500" /> Cambiar Contraseña
+                <KeyRound className="w-5 h-5 text-amber-500" /> Cambiar Contrasena
               </h3>
               <button onClick={() => setModalPwd(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-
             <div className="p-6 space-y-4">
               <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-700 flex items-center gap-2">
                 <Lock className="w-4 h-4 shrink-0" />
-                Cambiando contraseña de <strong>{modalPwd.nombre}</strong>
+                Cambiando contrasena de <strong>{modalPwd.nombre}</strong>
               </div>
-
-              {/* Si es el propio usuario, pide contraseña actual */}
-              {modalPwd.id === yo.id && (
+              {modalPwd.id === yo?.id && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña actual *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena actual *</label>
                   <div className="relative">
-                    <input type={showPwd.p ? "text" : "password"} value={pwd.password_actual}
-                      onChange={(e) => setPwd({ ...pwd, password_actual: e.target.value })}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
-                    />
-                    <button type="button" onClick={() => setShowPwd(s => ({ ...s, p: !s.p }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <input type={showPwd.p ? "text" : "password"} value={pwd.password_actual} onChange={(e) => setPwd({ ...pwd, password_actual: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                    <button type="button" onClick={() => setShowPwd(s => ({ ...s, p: !s.p }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                       {showPwd.p ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
               )}
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contrasena *</label>
                 <div className="relative">
-                  <input type={showPwd.n ? "text" : "password"} value={pwd.password_nuevo}
-                    onChange={(e) => setPwd({ ...pwd, password_nuevo: e.target.value })}
-                    placeholder="Mínimo 6 caracteres"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
-                  />
-                  <button type="button" onClick={() => setShowPwd(s => ({ ...s, n: !s.n }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <input type={showPwd.n ? "text" : "password"} value={pwd.password_nuevo} onChange={(e) => setPwd({ ...pwd, password_nuevo: e.target.value })} placeholder="Minimo 6 caracteres"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                  <button type="button" onClick={() => setShowPwd(s => ({ ...s, n: !s.n }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                     {showPwd.n ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contrasena *</label>
                 <div className="relative">
-                  <input type={showPwd.c ? "text" : "password"} value={pwd.confirmar}
-                    onChange={(e) => setPwd({ ...pwd, confirmar: e.target.value })}
-                    className={`w-full border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 ${
-                      pwd.confirmar && pwd.confirmar !== pwd.password_nuevo
-                        ? "border-red-300 focus:ring-red-300"
-                        : "border-gray-200 focus:ring-amber-300"
-                    }`}
-                  />
-                  <button type="button" onClick={() => setShowPwd(s => ({ ...s, c: !s.c }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <input type={showPwd.c ? "text" : "password"} value={pwd.confirmar} onChange={(e) => setPwd({ ...pwd, confirmar: e.target.value })}
+                    className={`w-full border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 ${pwd.confirmar && pwd.confirmar !== pwd.password_nuevo ? "border-red-300 focus:ring-red-300" : "border-gray-200 focus:ring-amber-300"}`} />
+                  <button type="button" onClick={() => setShowPwd(s => ({ ...s, c: !s.c }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                     {showPwd.c ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {pwd.confirmar && pwd.confirmar !== pwd.password_nuevo && (
-                  <p className="text-xs text-red-500 mt-1">Las contraseñas no coinciden</p>
+                  <p className="text-xs text-red-500 mt-1">Las contrasenas no coinciden</p>
                 )}
               </div>
             </div>
-
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => setModalPwd(null)}
-                className="flex-1 border border-gray-200 text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-50 transition-colors">
-                Cancelar
-              </button>
+              <button onClick={() => setModalPwd(null)} className="flex-1 border border-gray-200 text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-50 transition-colors">Cancelar</button>
               <button onClick={handleCambiarPwd} disabled={saving || (pwd.confirmar && pwd.confirmar !== pwd.password_nuevo)}
                 className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</> : "Actualizar Contraseña"}
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando...</> : "Actualizar Contrasena"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ══ Modal Confirmar Eliminar ════════════════════════════════════════ */}
+      {/* Modal Confirmar Eliminar */}
       {modalDel && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
@@ -499,20 +397,15 @@ const Usuarios = () => {
               <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto">
                 <Trash2 className="w-6 h-6 text-red-500" />
               </div>
-              <h3 className="font-bold text-lg text-gray-800">¿Eliminar usuario?</h3>
+              <h3 className="font-bold text-lg text-gray-800">Eliminar usuario?</h3>
               <p className="text-sm text-gray-500">
-                Se eliminará permanentemente a <span className="font-semibold text-gray-700">"{modalDel.nombre}"</span>.
-                Esta acción no se puede deshacer.
+                Se eliminara permanentemente a <span className="font-semibold text-gray-700">"{modalDel.nombre}"</span>. Esta accion no se puede deshacer.
               </p>
             </div>
             <div className="flex gap-3 px-6 pb-6">
-              <button onClick={() => setModalDel(null)}
-                className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={handleEliminar} disabled={saving}
-                className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Eliminando...</> : "Sí, eliminar"}
+              <button onClick={() => setModalDel(null)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">Cancelar</button>
+              <button onClick={handleEliminar} disabled={saving} className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Eliminando...</> : "Si, eliminar"}
               </button>
             </div>
           </div>

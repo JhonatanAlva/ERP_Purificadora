@@ -8,7 +8,7 @@ import {
     cancelarCredito,
     getEstadisticas,
 } from "../controllers/creditos.controller.js";
-import { verificarToken } from "../middleware/auth.middleware.js";
+import { verificarToken, requireAdmin } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -39,6 +39,6 @@ router.get("/", getCreditos);                 // GET    /api/creditos
 router.get("/:id", getCredito);                  // GET    /api/creditos/:id
 router.post("/", limitadorCreacion, createCredito);             // POST   /api/creditos
 router.post("/:id/abonar", limitadorAbonos, abonar);              // POST   /api/creditos/:id/abonar
-router.put("/:id/cancelar", cancelarCredito);             // PUT    /api/creditos/:id/cancelar
+router.put("/:id/cancelar", requireAdmin, cancelarCredito); // PUT  /api/creditos/:id/cancelar (admin+)
 
 export default router;

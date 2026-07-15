@@ -30,21 +30,23 @@ services:
     container_name: purificadora_postgres
     restart: always
     environment:
-      POSTGRES_USER: puri_user
-      POSTGRES_PASSWORD: puri_pass
-      POSTGRES_DB: purificadora_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5433:5432"
     volumes:
       - purificadora_postgres_data:/var/lib/postgresql/data
+      # Solo se ejecuta la primera vez que el volumen está vacío (init de Postgres)
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
 
   pgadmin:
     image: dpage/pgadmin4
     container_name: purificadora_pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@puri.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     ports:
       - "5051:80"
     depends_on:

@@ -51,8 +51,8 @@ export const getVentaDetalle = async (req, res) => {
 export const crearVenta = async (req, res) => {
   try {
     const {
-      cliente_id, items, subtotal, descuento,
-      total, metodo_pago, tipo_venta, estado,
+      cliente_id, items, descuento,
+      metodo_pago, tipo_venta, estado,
       ruta_id, notas, fecha,
     } = req.body;
 
@@ -83,17 +83,9 @@ export const crearVenta = async (req, res) => {
       ? "pendiente"
       : (estado && ESTADOS_VENTA.includes(estado) ? estado : "pagada");
 
-    // Validar totales numéricos y positivos
-    const subtotalNum = parseFloat(subtotal);
-    const totalNum    = parseFloat(total);
+    // subtotal y total se calculan en el servicio a partir del precio_venta
+    // real de cada producto (nunca se confía en montos enviados por el cliente).
     const descuentoNum = parseFloat(descuento) || 0;
-
-    if (isNaN(subtotalNum) || subtotalNum < 0) {
-      return err(res, 400, "subtotal no válido");
-    }
-    if (isNaN(totalNum) || totalNum < 0) {
-      return err(res, 400, "total no válido");
-    }
     if (descuentoNum < 0) {
       return err(res, 400, "descuento no puede ser negativo");
     }
@@ -113,18 +105,15 @@ export const crearVenta = async (req, res) => {
       return err(res, 400, "fecha debe tener formato YYYY-MM-DD");
     }
 
-    // Validar cada item del detalle
+    // Validar cada item del detalle (el precio se ignora: lo determina el
+    // servicio a partir del catálogo, no se acepta el que envía el cliente)
     for (const [i, item] of items.entries()) {
       if (!item.producto_id || !esUUID(item.producto_id)) {
         return err(res, 400, `Item ${i + 1}: producto_id no válido`);
       }
       const cantidad = parseInt(item.cantidad);
-      const precio   = parseFloat(item.precio);
       if (!cantidad || cantidad <= 0 || cantidad > 9999) {
         return err(res, 400, `Item ${i + 1}: cantidad no válida`);
-      }
-      if (isNaN(precio) || precio < 0) {
-        return err(res, 400, `Item ${i + 1}: precio no válido`);
       }
     }
 
@@ -134,9 +123,7 @@ export const crearVenta = async (req, res) => {
     const data = await ventasService.crearVenta({
       cliente_id:  cliente_id  || null,
       items,
-      subtotal:    subtotalNum,
       descuento:   descuentoNum,
-      total:       totalNum,
       metodo_pago,
       tipo_venta,
       estado:      estadoFinal,

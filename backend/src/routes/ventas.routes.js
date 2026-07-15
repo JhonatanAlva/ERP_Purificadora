@@ -5,7 +5,7 @@ import {
   crearVenta,
   cancelarVenta
 } from "../controllers/ventas.controller.js";
-import { verificarToken } from "../middleware/auth.middleware.js";
+import { verificarToken, requireAdmin } from "../middleware/auth.middleware.js";
 
 
 const router = Router();
@@ -13,6 +13,6 @@ const router = Router();
 router.get("/", verificarToken, getVentas);
 router.get("/:id", verificarToken, getVentaDetalle);
 router.post("/", verificarToken, crearVenta);
-router.patch("/:id/cancelar", verificarToken, cancelarVenta);
+router.patch("/:id/cancelar", verificarToken, requireAdmin, cancelarVenta);
 
 export default router;

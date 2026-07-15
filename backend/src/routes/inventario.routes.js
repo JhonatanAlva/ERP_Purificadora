@@ -1,6 +1,6 @@
 import express from "express";
 import * as controller from "../controllers/inventario.controller.js";
-import { verificarToken } from "../middleware/auth.middleware.js";
+import { verificarToken, requireAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
@@ -8,8 +8,8 @@ const router = express.Router();
 router.get("/productos", verificarToken, controller.getProductos);
 router.post("/productos", verificarToken, controller.createProducto);
 router.put("/productos/:id", verificarToken, controller.updateProducto);
-router.delete("/productos/:id", verificarToken, controller.deleteProducto);
-router.put("/productos/:id/activar", verificarToken, controller.activarProducto);
+router.delete("/productos/:id", verificarToken, requireAdmin, controller.deleteProducto);
+router.put("/productos/:id/activar", verificarToken, requireAdmin, controller.activarProducto);
 
 // MOVIMIENTOS
 router.get("/movimientos", verificarToken, controller.getMovimientos);
